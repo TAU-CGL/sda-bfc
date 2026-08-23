@@ -38,7 +38,7 @@ def test_cylinder_pose_matches_reference():
     q = np.array([0.1, -0.5, 0.3, 1.2, -0.7, 0.4])
     for link_index in range(7):
         np.testing.assert_allclose(
-            robot.get_cylinder_pose(link_index, q),
+            robot.get_cylinder_transform(link_index, q),
             reference_cylinder_pose(link_index, q),
             atol=1e-12,
         )
@@ -48,7 +48,7 @@ def test_z_offset():
     robot = UR5e()
     q = np.zeros(6)
     np.testing.assert_allclose(
-        robot.get_cylinder_pose(0, q, z_offset=0.0),
+        robot.get_cylinder_transform(0, q, z_offset=0.0),
         Z_TO_X,
         atol=1e-12,
     )
@@ -56,7 +56,7 @@ def test_z_offset():
 
 def test_link_radii():
     robot = UR5e()
-    expected = [0.0755, 0.0601, 0.0601, 0.0578, 0.0393, 0.0393, 0.0376]
+    expected = [0.0755, 0.0601, 0.0601, 0.0578, 0.235 / (2 * np.pi), 0.0393, 0.0376]
     for link_index, radius in enumerate(expected):
         assert robot.get_link_radius(link_index) == radius
 
@@ -64,7 +64,7 @@ def test_link_radii():
 def test_pose_is_rigid_transform():
     robot = UR5e()
     q = np.array([0.5, 0.5, 0.5, 0.5, 0.5, 0.5])
-    T = robot.get_cylinder_pose(6, q)
+    T = robot.get_cylinder_transform(6, q)
     R = T[:3, :3]
     np.testing.assert_allclose(R @ R.T, np.eye(3), atol=1e-12)
     assert np.isclose(np.linalg.det(R), 1.0)

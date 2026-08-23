@@ -33,7 +33,7 @@ namespace sda_bfc {
             return T;
         }
 
-        SE3 getCylinderPose(int linkIndex, JointSpaceConfig q, double zOffset = 0.007) {
+        SE3 getCylinderTransform(int linkIndex, JointSpaceConfig q, double zOffset = 0.007) {
             SE3 T; T.setIdentity();
             for (int i = 0; i < linkIndex; i++) {
                 T = T * dhTransform(q[i], dhD[i], dhA[i], dhAlpha[i]);
