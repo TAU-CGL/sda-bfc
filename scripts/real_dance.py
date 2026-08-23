@@ -23,6 +23,13 @@ Bring-up order (do NOT skip):
 
 The script assumes both robots are e-series, in Remote Control mode, with
 matching payload/TCP configuration and clear space below both home columns.
+
+Walls: the cell's walls are encoded as safety planes in each robot's safety
+configuration, so full 2-pi sweeps are not possible.  Set BLUE_YAW_RANGE /
+ORANGE_YAW_RANGE to each arm's known-safe base-yaw sector; sweeps clamp to
+them.  If an extended posture still reaches a plane, the resulting
+protective stop is handled: the mover recovers via the dashboard client,
+retreats, and the yaw interval for that posture is tightened online.
 """
 
 import argparse
@@ -33,6 +40,7 @@ import time
 import numpy as np
 
 try:
+    from dashboard_client import DashboardClient
     from rtde_control import RTDEControlInterface
     from rtde_receive import RTDEReceiveInterface
 except ImportError:
@@ -57,6 +65,42 @@ APPROACH_SPEED = 0.1
 APPROACH_ACCEL = 0.5
 STOP_DECEL = 3.0
 SETTLE_SECONDS = 0.5
+
+# The cell has walls encoded as safety planes in each robot's safety config.
+# Configure the known-safe base-yaw sector of each arm here (absolute joint-0
+# values); sweeps and placements never command yaws outside these.  Any
+# safety-plane hit that still happens (extended postures reach further than
+# folded ones) protective-stops the MOVER; the script recovers via the
+# dashboard, retreats, and learns a tighter per-posture yaw boundary.
+BLUE_YAW_RANGE = (-np.pi, np.pi)
+ORANGE_YAW_RANGE = (-np.pi, np.pi)
+BOUNDARY_MARGIN = 0.15
+PROTECTIVE_STOP_WAIT = 6.0
+
+
+class YawLimits:
+    """Per-posture allowed yaw interval: configured sector, tightened online
+    whenever a safety plane protective-stops the arm at that posture."""
+
+    def __init__(self, configured):
+        self.configured = configured
+        self.learned = {}
+
+    def interval(self, key):
+        return self.learned.get(key, list(self.configured))
+
+    def clamp(self, key, yaw):
+        lo, hi = self.interval(key)
+        return float(np.clip(yaw, lo, hi))
+
+    def learn(self, key, boundary_yaw, sign):
+        lo, hi = self.interval(key)
+        if sign > 0:
+            hi = min(hi, boundary_yaw - BOUNDARY_MARGIN)
+        else:
+            lo = max(lo, boundary_yaw + BOUNDARY_MARGIN)
+        self.learned[key] = [lo, hi]
+        print(f"    learned yaw limits for {key}: [{lo:.2f}, {hi:.2f}]")
 
 
 class ContactSentinel:
@@ -120,12 +164,17 @@ class ContactSentinel:
 
 
 class RealArm:
-    def __init__(self, ip, name, execute):
+    def __init__(self, ip, name, execute, yaw_range):
         self.name = name
         self.execute = execute
         self.control = RTDEControlInterface(ip) if execute else None
         self.receive = RTDEReceiveInterface(ip)
+        self.dashboard = None
+        if execute:
+            self.dashboard = DashboardClient(ip)
+            self.dashboard.connect()
         self.sentinel = ContactSentinel(self.receive, name)
+        self.yaw_limits = YawLimits(yaw_range)
 
     def q(self):
         return np.array(self.receive.getActualQ())
@@ -134,14 +183,31 @@ class RealArm:
         if self.control is not None:
             self.control.stopJ(STOP_DECEL)
 
+    def recover_protective_stop(self):
+        print(f"[{self.name}] protective stop (safety plane) -- recovering")
+        time.sleep(PROTECTIVE_STOP_WAIT)
+        self.dashboard.unlockProtectiveStop()
+        time.sleep(1.0)
+        if not self.control.isConnected():
+            self.control.reconnect()
+        self.control.reuploadScript()
+        time.sleep(0.5)
+
     def move_guarded(self, target, other, speed=APPROACH_SPEED,
                      accel=APPROACH_ACCEL):
         """Async moveJ toward target while the OTHER arm's sentinel watches.
 
-        Returns (reached, attributed_link_of_static_arm, contact_q)."""
+        Returns (status, attributed_link, q_at_stop) with status in
+        {"reached", "contact", "boundary", "static-pstop"}:
+          contact      the static arm felt the touch (sentinel)
+          boundary     the mover hit a safety plane (protective stop),
+                       recovered and is halted at q_at_stop
+          static-pstop the STATIC arm protective-stopped (touch force
+                       exceeded its safety limits) -- discard and recover
+        """
         if not self.execute:
             print(f"[dry-run] {self.name} moveJ -> {np.round(target, 3)}")
-            return True, None, None
+            return "reached", None, None
         other.sentinel.calibrate(0.5)
         other.sentinel.arm()
         self.control.moveJ(list(target), speed, accel, True)
@@ -154,9 +220,17 @@ class RealArm:
                     print(f"[{self.name}] contact felt by {other.name}, "
                           f"joints {other.sentinel.affected_joints}, "
                           f"attributed link {link}")
-                    return False, link, self.q()
+                    return "contact", link, self.q()
+                if self.receive.isProtectiveStopped():
+                    q_stop = self.q()
+                    self.recover_protective_stop()
+                    return "boundary", None, q_stop
+                if other.receive.isProtectiveStopped():
+                    self.stop()
+                    other.recover_protective_stop()
+                    return "static-pstop", None, self.q()
                 if self.control.getAsyncOperationProgress() < 0:
-                    return True, None, None
+                    return "reached", None, None
                 time.sleep(MONITOR_PERIOD)
         finally:
             other.sentinel.disarm()
@@ -168,51 +242,84 @@ class RealArm:
 
 
 def retreat(arm, other, waypoint):
-    reached, _, _ = arm.move_guarded(waypoint, other, TRAVEL_SPEED, TRAVEL_ACCEL)
-    if not reached:
+    status, _, _ = arm.move_guarded(waypoint, other, TRAVEL_SPEED, TRAVEL_ACCEL)
+    if status == "boundary":
+        raise RuntimeError(f"{arm.name}: safety plane hit during retreat along "
+                           "a just-traversed path -- safety config changed?")
+    if status != "reached":
         raise RuntimeError(f"{arm.name}: contact during retreat -- "
                            "workspace inconsistent, stopping for safety")
+
+
+def in_range(yaw, yaw_range):
+    return yaw_range[0] <= yaw <= yaw_range[1]
 
 
 def perform_real_dance(blue, orange):
     touches = []
 
     def sweep_pass(theta0, rung, tilt, sign, qA):
-        target = dance.orange_config(
-            theta0 + sign * (2.0 * np.pi - dance.SWEEP_MARGIN), rung, tilt)
-        reached, link, qB = orange.move_guarded(target, blue)
-        if not reached and link == dance.DH_LINK and qB is not None:
-            touches.append((qA.copy(), qB.copy()))
-            print(f"  touch #{len(touches)} recorded")
+        key = ("sweep", rung)
+        lo, hi = orange.yaw_limits.interval(key)
+        raw_target = theta0 + sign * (2.0 * np.pi - dance.SWEEP_MARGIN)
+        target_yaw = float(np.clip(raw_target, lo, hi))
+        if abs(target_yaw - theta0) < 2 * BOUNDARY_MARGIN:
+            return False
+        target = dance.orange_config(target_yaw, rung, tilt)
+        status, link, qB = orange.move_guarded(target, blue)
+        hit = False
+        if status == "contact":
+            hit = True
+            if link == dance.DH_LINK and qB is not None:
+                touches.append((qA.copy(), qB.copy()))
+                print(f"  touch #{len(touches)} recorded")
+        elif status == "boundary":
+            orange.yaw_limits.learn(key, qB[0], sign)
         retreat(orange, blue, dance.orange_config(theta0, rung, tilt))
-        return not reached
+        return hit
 
-    blue_home = dance.fold_config(0.0)
-    orange_home = dance.fold_config(0.0)
-    retreat(blue, orange, blue_home)
-    retreat(orange, blue, orange_home)
+    blue_directions = [d for d in dance.A_DIRECTIONS
+                       if in_range(np.arctan2(np.sin(d), np.cos(d)),
+                                   blue.yaw_limits.configured)]
+    deploy_yaws = [y for y in dance.ORANGE_DEPLOY_YAWS
+                   if in_range(y, orange.yaw_limits.configured)]
+    if not deploy_yaws:
+        raise RuntimeError("ORANGE_YAW_RANGE leaves no deploy yaw")
 
-    for direction in dance.A_DIRECTIONS:
+    retreat(blue, orange, dance.fold_config(blue_directions[0]))
+    retreat(orange, blue, dance.fold_config(deploy_yaws[0]))
+
+    for direction in blue_directions:
+        direction = float(np.arctan2(np.sin(direction), np.cos(direction)))
         retreat(blue, orange, dance.fold_config(direction))
         for blue_tilt in dance.BLUE_TILTS:
-            reached, _, _ = blue.move_guarded(
+            status, _, _ = blue.move_guarded(
                 dance.blue_config(direction, blue_tilt), orange)
-            if not reached:
+            if status == "boundary":
+                print(f"  blue direction {direction:.2f} blocked by safety plane")
+                retreat(blue, orange, dance.fold_config(direction))
+                break
+            if status != "reached":
                 retreat(blue, orange, dance.fold_config(direction))
                 break
             qA = dance.blue_config(direction, blue_tilt)
             found_any = False
-            theta0 = orange.q()[0]
+            theta0 = deploy_yaws[0]
+            retreat(orange, blue, dance.fold_config(theta0))
             for rung in dance.ORANGE_RUNGS:
-                reached, _, _ = orange.move_guarded(
+                status, _, qs = orange.move_guarded(
                     dance.orange_config(theta0, rung), blue)
-                if not reached:
+                if status == "boundary":
+                    orange.yaw_limits.learn(("sweep", rung), qs[0], +1)
+                    retreat(orange, blue, dance.fold_config(theta0))
+                    continue
+                if status != "reached":
                     retreat(orange, blue, dance.fold_config(theta0))
                     continue
                 tilts = [0.0]
                 for tilt in tilts:
                     hit_cw = sweep_pass(theta0, rung, tilt, +1, qA)
-                    hit_ccw = sweep_pass(theta0, rung, tilt, -1, qA) if hit_cw else False
+                    hit_ccw = sweep_pass(theta0, rung, tilt, -1, qA)
                     if (hit_cw or hit_ccw) and tilt == 0.0:
                         tilts.extend(dance.ORANGE_TILTS)
                         found_any = True
@@ -265,8 +372,8 @@ def main():
         if answer.strip() != "YES":
             sys.exit(0)
 
-    blue = RealArm(BLUE_IP, "blue", args.execute)
-    orange = RealArm(ORANGE_IP, "orange", args.execute)
+    blue = RealArm(BLUE_IP, "blue", args.execute, BLUE_YAW_RANGE)
+    orange = RealArm(ORANGE_IP, "orange", args.execute, ORANGE_YAW_RANGE)
     try:
         if args.test_sentinel:
             test_sentinel(blue, orange)
