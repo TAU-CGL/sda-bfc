@@ -428,11 +428,12 @@ namespace sda_bfc {
             return weightedAveragePose(qs, vs, scores, eps);
         }
 
-    private:
+    protected:
         int nInitial, nElites, nPerElite;
         double eps;
         unsigned seed;
         std::vector<double> sigmaSchedule;
     };
+
 
 }

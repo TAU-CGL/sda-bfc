@@ -6,6 +6,7 @@
 #include <geometry.hpp>
 #include <solver_newton.hpp>
 #include <solver_annealing_lp.hpp>
+#include <solver_smc.hpp>
 
 namespace nb = nanobind;
 
@@ -65,4 +66,15 @@ NB_MODULE(_sda_bfc, m) {
         .def("cost", &sda_bfc::SolverAnnealingLP::cost, nb::arg("X"))
         .def("solve",
              [](const sda_bfc::SolverAnnealingLP& self) { return self.solve(sda_bfc::SE3::Identity()); });
+
+    nb::class_<sda_bfc::SolverSMC>(m, "SolverSMC")
+        .def(nb::init<const std::vector<sda_bfc::SE3>&, const std::vector<sda_bfc::SE3>&,
+                      double, double, int, double, double, double, unsigned, std::vector<double>>(),
+             nb::arg("As"), nb::arg("Bs"), nb::arg("radius_a"), nb::arg("radius_b"),
+             nb::arg("num_particles") = 1000, nb::arg("fresh_fraction") = 0.1,
+             nb::arg("ess_target") = 0.02, nb::arg("eps") = 2e-3, nb::arg("seed") = 0,
+             nb::arg("sigma_schedule") = std::vector<double>{0.3, 0.2, 0.15, 0.1, 0.075, 0.05, 0.03, 0.02, 0.01})
+        .def("cost", &sda_bfc::SolverSMC::cost, nb::arg("X"))
+        .def("solve",
+             [](const sda_bfc::SolverSMC& self) { return self.solve(sda_bfc::SE3::Identity()); });
 }
