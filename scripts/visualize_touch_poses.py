@@ -82,7 +82,7 @@ class Viewer:
         ]
         for transforms, color in zip(arms, ARM_COLORS):
             for i, T in enumerate(transforms):
-                X, Y, Z = cylinder_surface(T, robot.get_link_radius(i), LINK_EXTENTS[i])
+                X, Y, Z = cylinder_surface(T, robot.get_link_radius(i if i < 3 else i + 1), LINK_EXTENTS[i])
                 self.ax.plot_surface(X, Y, Z, color=color, alpha=0.7, shade=True)
         self.ax.set_title(f"Touch pose {self.index + 1}/{len(TOUCH_POSES)}")
         self.ax.set_xlabel("x")
