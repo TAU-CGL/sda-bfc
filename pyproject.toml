@@ -1,0 +1,16 @@
+[build-system]
+requires = [
+    "conan>=2.0.0",
+    "setuptools",
+    "scikit-build>=0.17.3",
+    "scikit-build-core",
+    "skbuild-conan",
+    "nanobind"]
+build-backend = "setuptools.build_meta"
+
+[tool.scikit-build]
+wheel.expand-macos-universal-tags = true
+cmake.build-type = "Release"
+
+[tool.cibuildwheel]
+build-verbosity = 1

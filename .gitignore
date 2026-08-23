@@ -67,3 +67,25 @@ vcpkg_installed/
 # test output & cache
 Testing/
 .cache/
+
+.DS_Store
+
+bin/
+lib/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.ipynb_checkpoints/
+
+# scikit-build / conan
+_skbuild/
+.conan/
+CMakeUserPresets.json
