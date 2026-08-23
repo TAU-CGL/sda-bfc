@@ -11,9 +11,14 @@ namespace sda_bfc {
     public:
         using JointSpaceConfig = Eigen::Vector<double, d>;
         using DHParameter = Eigen::Vector<double, d>;
+        using LinkRadii = Eigen::Vector<double, d + 1>;
 
-        ForwardKinematics(DHParameter dhD, DHParameter dhA, DHParameter dhAlpha) :
-            dhD(dhD), dhA(dhA), dhAlpha(dhAlpha) {
+        ForwardKinematics(DHParameter dhD, DHParameter dhA, DHParameter dhAlpha, LinkRadii linkRadii) :
+            dhD(dhD), dhA(dhA), dhAlpha(dhAlpha), linkRadii(linkRadii) {
+        }
+
+        double getLinkRadius(int linkIndex) const {
+            return linkRadii[linkIndex];
         }
 
         static SE3 dhTransform(double theta, double dist, double a, double alpha) {
@@ -39,6 +44,7 @@ namespace sda_bfc {
 
     private:
         DHParameter dhD, dhA, dhAlpha;
+        LinkRadii linkRadii;
 
         static inline const SE3 Z_TO_X = (
             SE3() << 

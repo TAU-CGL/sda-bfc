@@ -54,6 +54,13 @@ def test_z_offset():
     )
 
 
+def test_link_radii():
+    robot = UR5e()
+    expected = [0.0755, 0.0601, 0.0601, 0.0578, 0.0393, 0.0393, 0.0376]
+    for link_index, radius in enumerate(expected):
+        assert robot.get_link_radius(link_index) == radius
+
+
 def test_pose_is_rigid_transform():
     robot = UR5e()
     q = np.array([0.5, 0.5, 0.5, 0.5, 0.5, 0.5])
