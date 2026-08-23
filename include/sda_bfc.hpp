@@ -8,4 +8,4 @@ inline void test() {
     fmt::print("Hello, World!\n");
 }
 
-} // namespace sda_bfc
+}

@@ -10,6 +10,7 @@ if (NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
 endif()
 
 find_package(fmt REQUIRED)
+find_package(Eigen3 REQUIRED)
 find_package(Python COMPONENTS Interpreter Development.Module REQUIRED)
 
 execute_process(
@@ -20,7 +21,7 @@ find_package(nanobind CONFIG REQUIRED)
 include_directories(${CMAKE_CURRENT_SOURCE_DIR}/include)
 
 nanobind_add_module(_sda_bfc src/sda_bfc_py.cpp)
-target_link_libraries(_sda_bfc PRIVATE fmt::fmt)
+target_link_libraries(_sda_bfc PRIVATE fmt::fmt Eigen3::Eigen)
 
 if (WIN32)
     install(TARGETS _sda_bfc LIBRARY DESTINATION lib/site-packages/sda_bfc)
