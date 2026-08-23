@@ -2,7 +2,7 @@ import numpy as np
 import pytest
 
 import test_touch_poses as touch
-from sda_bfc import CylinderPose, SolverNewton, UR5e
+from sda_bfc import CylinderPose, SolverAnnealingLP, SolverNewton, UR5e
 
 
 def build_solver():
@@ -35,6 +35,27 @@ def test_solver_zeros_touch_constraints():
     for At, Bt in zip(As, Bs):
         cylinder = CylinderPose.from_se3(np.linalg.inv(At) @ X @ Bt, radius)
         assert cylinder.signed_distance(radius) == pytest.approx(0.0, abs=2e-3)
+
+
+def test_annealing_lp_recovers_base_offset():
+    robot = UR5e()
+    radius = robot.get_link_radius(touch.RADII_LINK_INDEX)
+    As = [robot.get_cylinder_transform(touch.DH_LINK_INDEX, np.array(q1))
+          for q1, _ in touch.TOUCH_POSES]
+    Bs = [robot.get_cylinder_transform(touch.DH_LINK_INDEX, np.array(q2))
+          for _, q2 in touch.TOUCH_POSES]
+    X = SolverAnnealingLP(As, Bs, radius, radius).solve()
+
+    # ------------------------------------------------------------------
+    # Ground truth: used ONLY for verification below, never in the solve.
+    # ------------------------------------------------------------------
+    X_gt = touch.base_transform()
+
+    translation_error = np.linalg.norm(X[:3, 3] - X_gt[:3, 3])
+    R_delta = X[:3, :3].T @ X_gt[:3, :3]
+    rotation_error = np.degrees(np.arccos(np.clip((np.trace(R_delta) - 1.0) / 2.0, -1.0, 1.0)))
+    assert translation_error < 0.01
+    assert rotation_error < 1.0
 
 
 def test_solver_recovers_base_offset():

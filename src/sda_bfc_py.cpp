@@ -5,6 +5,7 @@
 #include <fk_ur5e.hpp>
 #include <geometry.hpp>
 #include <solver_newton.hpp>
+#include <solver_annealing_lp.hpp>
 
 namespace nb = nanobind;
 
@@ -53,4 +54,15 @@ NB_MODULE(_sda_bfc, m) {
         .def("solve_multistart", &sda_bfc::SolverNewton::solveMultistart,
              nb::arg("num_starts") = 2000, nb::arg("translation_range") = 1.2,
              nb::arg("max_iterations") = 150, nb::arg("seed") = 0);
+
+    nb::class_<sda_bfc::SolverAnnealingLP>(m, "SolverAnnealingLP")
+        .def(nb::init<const std::vector<sda_bfc::SE3>&, const std::vector<sda_bfc::SE3>&,
+                      double, double, int, int, int, double, unsigned, std::vector<double>>(),
+             nb::arg("As"), nb::arg("Bs"), nb::arg("radius_a"), nb::arg("radius_b"),
+             nb::arg("n_initial") = 5000, nb::arg("n_elites") = 40, nb::arg("n_per_elite") = 40,
+             nb::arg("eps") = 2e-3, nb::arg("seed") = 0,
+             nb::arg("sigma_schedule") = std::vector<double>{0.3, 0.15, 0.075, 0.03, 0.01})
+        .def("cost", &sda_bfc::SolverAnnealingLP::cost, nb::arg("X"))
+        .def("solve",
+             [](const sda_bfc::SolverAnnealingLP& self) { return self.solve(sda_bfc::SE3::Identity()); });
 }
