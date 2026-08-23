@@ -1,8 +1,10 @@
 #include <nanobind/nanobind.h>
 #include <nanobind/eigen/dense.h>
+#include <nanobind/stl/vector.h>
 
 #include <fk_ur5e.hpp>
 #include <geometry.hpp>
+#include <solver_newton.hpp>
 
 namespace nb = nanobind;
 
@@ -33,5 +35,22 @@ NB_MODULE(_sda_bfc, m) {
              nb::arg("other"))
         .def("signed_distance",
              nb::overload_cast<double>(&sda_bfc::CylinderPose::signedDistance, nb::const_),
+             nb::arg("other_r"))
+        .def("implicit_touch_condition", &sda_bfc::CylinderPose::implicitTouchCondition,
              nb::arg("other_r"));
+
+    nb::class_<sda_bfc::SolverNewton>(m, "SolverNewton")
+        .def(nb::init<const std::vector<sda_bfc::SE3>&, const std::vector<sda_bfc::SE3>&, double, double>(),
+             nb::arg("As"), nb::arg("Bs"), nb::arg("radius_a"), nb::arg("radius_b"))
+        .def("residual",
+             [](const sda_bfc::SolverNewton& self, const sda_bfc::SE3& X, size_t t) {
+                 return self.residual(X, t);
+             },
+             nb::arg("X"), nb::arg("t"))
+        .def("cost", &sda_bfc::SolverNewton::cost, nb::arg("X"))
+        .def("solve", &sda_bfc::SolverNewton::solve,
+             nb::arg("x0"), nb::arg("max_iterations") = 100, nb::arg("tolerance") = 1e-14)
+        .def("solve_multistart", &sda_bfc::SolverNewton::solveMultistart,
+             nb::arg("num_starts") = 2000, nb::arg("translation_range") = 1.2,
+             nb::arg("max_iterations") = 150, nb::arg("seed") = 0);
 }

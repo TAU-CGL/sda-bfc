@@ -70,6 +70,13 @@ namespace sda_bfc {
             }
             return dist - (r + otherR);
         }
+
+        double implicitTouchCondition(double otherR) const { // From an upright cylinder through origin whose radius is `otherR`
+            double denom = u[0] * u[0] + u[1] * u[1];
+            double dist = p[0] * u[1] - p[1] * u[0];
+            dist = dist * dist - denom * (r + otherR) * (r + otherR);
+            return dist;
+        }
     };
 
 }
