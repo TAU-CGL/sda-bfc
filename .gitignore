@@ -88,4 +88,5 @@ venv/
 # scikit-build / conan
 _skbuild/
 .conan/
+.vscode
 CMakeUserPresets.json
