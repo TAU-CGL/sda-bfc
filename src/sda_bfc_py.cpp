@@ -145,6 +145,11 @@ NB_MODULE(_sda_bfc, m) {
              [](const sda_bfc::TwoArmScene& self, int i) {
                  return self.model().linkRadius(i);
              },
+             nb::arg("i"))
+        .def("link_z_offset",
+             [](const sda_bfc::TwoArmScene& self, int i) {
+                 return self.model().linkZOffset(i);
+             },
              nb::arg("i"));
 
     nb::class_<sda_bfc::PlacementParams>(m, "PlacementParams")

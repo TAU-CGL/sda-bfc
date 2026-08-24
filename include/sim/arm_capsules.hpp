@@ -16,6 +16,11 @@ namespace sda_bfc {
     inline constexpr double kHousingLength = 0.12;
     // DH link i -> radii index: i for the base links, i+1 from the forearm on.
     inline constexpr std::array<int, kNumCapsuleLinks> kRadiusIndex = {0, 1, 2, 4, 5, 6};
+    // Lateral offset of each link's physical tube from its DH frame line,
+    // applied along the frame z-axis (measured on the real UR5e; the upper
+    // arm tube sits 138 mm off its DH line, the forearm 7 mm).
+    inline constexpr std::array<double, kNumCapsuleLinks> kLinkZOffsets =
+        {0.0, 0.0, 0.138, 0.007, 0.0, 0.0};
 
     class ArmCapsuleModel {
     public:
@@ -37,7 +42,7 @@ namespace sda_bfc {
                 const JointConfig& q, const SE3& base = SE3::Identity()) const {
             std::array<Capsule, kNumCapsuleLinks> out;
             for (int i = 0; i < kNumCapsuleLinks; i++) {
-                SE3 T = base * fk_.getCylinderTransform(i, q);
+                SE3 T = base * fk_.getCylinderTransform(i, q, kLinkZOffsets[i]);
                 R3 p = T.block<3,1>(0, 3), u = T.block<3,1>(0, 2);
                 out[i] = {p + extents_[i].first * u, p + extents_[i].second * u,
                           radii_[i]};
@@ -46,6 +51,7 @@ namespace sda_bfc {
         }
 
         double linkRadius(int i) const { return radii_[i]; }
+        double linkZOffset(int i) const { return kLinkZOffsets[i]; }
         std::pair<double, double> extents(int i) const { return extents_[i]; }
         const ForwardKinematics<6>& fk() const { return fk_; }
 
