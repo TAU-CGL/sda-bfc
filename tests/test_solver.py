@@ -2,7 +2,8 @@ import numpy as np
 import pytest
 
 import test_touch_poses as touch
-from sda_bfc import CylinderPose, SolverAnnealingLP, SolverNewton, SolverSMC, UR5e
+from sda_bfc import (CylinderPose, SolverAdam, SolverAnnealingLP,
+                     SolverNewton, SolverSMC, UR5e)
 
 
 def build_solver():
@@ -45,6 +46,22 @@ def test_annealing_lp_recovers_base_offset():
     Bs = [robot.get_cylinder_transform(touch.DH_LINK_INDEX, np.array(q2))
           for _, q2 in touch.TOUCH_POSES]
     X = SolverAnnealingLP(As, Bs, radius, radius).solve()
+
+    # ------------------------------------------------------------------
+    # Ground truth: used ONLY for verification below, never in the solve.
+    # ------------------------------------------------------------------
+    X_gt = touch.base_transform()
+
+    translation_error = np.linalg.norm(X[:3, 3] - X_gt[:3, 3])
+    R_delta = X[:3, :3].T @ X_gt[:3, :3]
+    rotation_error = np.degrees(np.arccos(np.clip((np.trace(R_delta) - 1.0) / 2.0, -1.0, 1.0)))
+    assert translation_error < 0.01
+    assert rotation_error < 1.0
+
+
+def test_adam_recovers_base_offset():
+    solver, As, Bs, radius = build_solver()
+    X = SolverAdam(As, Bs, radius, radius).solve_multistart()
 
     # ------------------------------------------------------------------
     # Ground truth: used ONLY for verification below, never in the solve.

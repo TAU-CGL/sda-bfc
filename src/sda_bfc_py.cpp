@@ -7,6 +7,7 @@
 #include <solver_newton.hpp>
 #include <solver_annealing_lp.hpp>
 #include <solver_smc.hpp>
+#include <solver_adam.hpp>
 
 namespace nb = nanobind;
 
@@ -77,4 +78,17 @@ NB_MODULE(_sda_bfc, m) {
         .def("cost", &sda_bfc::SolverSMC::cost, nb::arg("X"))
         .def("solve",
              [](const sda_bfc::SolverSMC& self) { return self.solve(sda_bfc::SE3::Identity()); });
+
+    nb::class_<sda_bfc::SolverAdam>(m, "SolverAdam")
+        .def(nb::init<const std::vector<sda_bfc::SE3>&, const std::vector<sda_bfc::SE3>&,
+                      double, double, double, double, double, double>(),
+             nb::arg("As"), nb::arg("Bs"), nb::arg("radius_a"), nb::arg("radius_b"),
+             nb::arg("learning_rate") = 0.01, nb::arg("beta1") = 0.9,
+             nb::arg("beta2") = 0.999, nb::arg("epsilon") = 1e-8)
+        .def("cost", &sda_bfc::SolverAdam::cost, nb::arg("X"))
+        .def("solve", &sda_bfc::SolverAdam::solve,
+             nb::arg("x0"), nb::arg("max_iterations") = 2000, nb::arg("tolerance") = 1e-12)
+        .def("solve_multistart", &sda_bfc::SolverAdam::solveMultistart,
+             nb::arg("num_starts") = 2000, nb::arg("translation_range") = 1.2,
+             nb::arg("max_iterations") = 2000, nb::arg("seed") = 0);
 }
