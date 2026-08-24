@@ -21,6 +21,14 @@ namespace sda_bfc {
             return linkRadii[linkIndex];
         }
 
+        double getDhA(int i) const {
+            return dhA[i];
+        }
+
+        double getDhD(int i) const {
+            return dhD[i];
+        }
+
         static SE3 dhTransform(double theta, double dist, double a, double alpha) {
             double ct = cos(theta), st = sin(theta);
             double ca = cos(alpha), sa = sin(alpha);
@@ -33,11 +41,19 @@ namespace sda_bfc {
             return T;
         }
 
-        SE3 getCylinderTransform(int linkIndex, JointSpaceConfig q, double zOffset = 0.007) {
+        // Partial DH product up to (excluding) jointIndex, without the
+        // cylinder zOffset / Z_TO_X factors: the frame whose z-axis is joint
+        // jointIndex's rotation axis.
+        SE3 getJointFrame(int jointIndex, JointSpaceConfig q) const {
             SE3 T; T.setIdentity();
-            for (int i = 0; i < linkIndex; i++) {
+            for (int i = 0; i < jointIndex; i++) {
                 T = T * dhTransform(q[i], dhD[i], dhA[i], dhAlpha[i]);
             }
+            return T;
+        }
+
+        SE3 getCylinderTransform(int linkIndex, JointSpaceConfig q, double zOffset = 0.007) const {
+            SE3 T = getJointFrame(linkIndex, q);
             T.block<3,1>(0,3) += zOffset * T.block<3,1>(0,2);
             return T * Z_TO_X;
         }
