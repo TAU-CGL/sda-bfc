@@ -2,7 +2,7 @@
 
 #include <Eigen/Dense>
 
-#include "geometry.hpp"
+#include "../geometry.hpp"
 
 namespace sda_bfc {
 

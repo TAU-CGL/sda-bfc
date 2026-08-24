@@ -2,12 +2,12 @@
 #include <nanobind/eigen/dense.h>
 #include <nanobind/stl/vector.h>
 
-#include <fk_ur5e.hpp>
+#include <fk/fk_ur5e.hpp>
 #include <geometry.hpp>
-#include <solver_newton.hpp>
-#include <solver_annealing_lp.hpp>
-#include <solver_smc.hpp>
-#include <solver_adam.hpp>
+#include <solvers/solver_newton.hpp>
+#include <solvers/solver_annealing_lp.hpp>
+#include <solvers/solver_smc.hpp>
+#include <solvers/solver_adam.hpp>
 
 namespace nb = nanobind;
 
