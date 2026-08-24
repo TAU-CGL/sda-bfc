@@ -1,6 +1,8 @@
 from ._sda_bfc import (Capsule, ContactGenerator, ContactParams, ContactPose,
                        CylinderPose, Experiment, ExperimentParams,
                        PairClearance, PlacementParams, SegmentClosest,
+                       UncertaintyRanges, capsule_obb_vertices,
+                       expand_capsule,
                        SolverAdam, SolverAnnealingLP, SolverNewton,
                        SolverSMC, TwoArmScene, UR5e, fold_config,
                        generate_experiment, sample_placement,

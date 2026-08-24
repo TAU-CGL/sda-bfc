@@ -107,6 +107,26 @@ NB_MODULE(_sda_bfc, m) {
         .def_ro("s", &sda_bfc::SegmentClosest::s)
         .def_ro("t", &sda_bfc::SegmentClosest::t);
 
+    nb::class_<sda_bfc::UncertaintyRanges>(m, "UncertaintyRanges")
+        .def(nb::init<>())
+        .def_rw("x", &sda_bfc::UncertaintyRanges::x)
+        .def_rw("y", &sda_bfc::UncertaintyRanges::y)
+        .def_rw("z", &sda_bfc::UncertaintyRanges::z)
+        .def_rw("roll", &sda_bfc::UncertaintyRanges::roll)
+        .def_rw("pitch", &sda_bfc::UncertaintyRanges::pitch)
+        .def_rw("yaw", &sda_bfc::UncertaintyRanges::yaw);
+
+    m.def("capsule_obb_vertices",
+          [](const sda_bfc::Capsule& c, double extra_radius) {
+              auto verts = sda_bfc::capsuleObbVertices(c, extra_radius);
+              Eigen::Matrix<double, 8, 3> out;
+              for (int i = 0; i < 8; i++) out.row(i) = verts[i].transpose();
+              return out;
+          },
+          nb::arg("capsule"), nb::arg("extra_radius") = 0.0);
+    m.def("expand_capsule", &sda_bfc::expandCapsule,
+          nb::arg("capsule"), nb::arg("ranges"));
+
     m.def("segment_closest", &sda_bfc::segmentClosest,
           nb::arg("p1"), nb::arg("q1"), nb::arg("p2"), nb::arg("q2"));
     m.def("segment_distance", &sda_bfc::segmentDistance,
@@ -150,7 +170,13 @@ NB_MODULE(_sda_bfc, m) {
              [](const sda_bfc::TwoArmScene& self, int i) {
                  return self.model().linkZOffset(i);
              },
-             nb::arg("i"));
+             nb::arg("i"))
+        .def("capsules",
+             [](const sda_bfc::TwoArmScene& self, const sda_bfc::JointConfig& q) {
+                 auto caps = self.model().capsules(q);
+                 return std::vector<sda_bfc::Capsule>(caps.begin(), caps.end());
+             },
+             nb::arg("q"));
 
     nb::class_<sda_bfc::PlacementParams>(m, "PlacementParams")
         .def(nb::init<>())

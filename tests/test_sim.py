@@ -3,7 +3,8 @@ import pytest
 
 import test_touch_poses as touch
 from sda_bfc import (ContactGenerator, CylinderPose, SolverNewton, TwoArmScene,
-                     UR5e, generate_experiment, sample_placement,
+                     UR5e, UncertaintyRanges, capsule_obb_vertices,
+                     expand_capsule, generate_experiment, sample_placement,
                      sample_valid_placement, segment_closest, segment_distance)
 
 EXPECTED_EXTENTS = [(-0.08125, 0.08125), (-0.08125, 0.08125), (0.0, 0.425),
@@ -151,3 +152,36 @@ def test_generate_contact_optional():
     assert contact is not None
     assert np.all(np.abs(contact.q_a[3:]) <= np.pi)
     assert np.all(np.abs(contact.q_b[3:]) <= np.pi)
+
+
+def test_expanded_capsule_contains_all_range_placements():
+    from scipy.spatial import ConvexHull
+
+    robot = UR5e()
+    scene = TwoArmScene(robot, np.eye(4))
+    rng = np.random.default_rng(0)
+    cases = [
+        (0.03, 0.02, 0.05, np.radians(2), np.radians(2), np.radians(3)),
+        (0.0, 0.0, 0.0, np.radians(10), np.radians(10), np.radians(10)),
+        (0.0, 0.0, 0.0, 0.0, 0.0, np.radians(10)),
+    ]
+    q = np.array([0.3, -0.9, 0.5, 0.2, -0.4, 0.1])
+    capsules = scene.capsules(q)
+    for case in cases:
+        ranges = UncertaintyRanges()
+        ranges.x, ranges.y, ranges.z, ranges.roll, ranges.pitch, ranges.yaw = case
+        for capsule in capsules:
+            hull_eq = ConvexHull(expand_capsule(capsule, ranges)).equations
+            obb = capsule_obb_vertices(capsule)
+            worst = -np.inf
+            for _ in range(200):
+                d = rng.uniform(-1, 1, 6) * np.array(case)
+                cz, sz = np.cos(d[5]), np.sin(d[5])
+                cy, sy = np.cos(d[4]), np.sin(d[4])
+                cx, sx = np.cos(d[3]), np.sin(d[3])
+                R = (np.array([[cz, -sz, 0], [sz, cz, 0], [0, 0, 1]])
+                     @ np.array([[cy, 0, sy], [0, 1, 0], [-sy, 0, cy]])
+                     @ np.array([[1, 0, 0], [0, cx, -sx], [0, sx, cx]]))
+                pts = (obb - d[:3]) @ R
+                worst = max(worst, np.max(hull_eq[:, :3] @ pts.T + hull_eq[:, 3:4]))
+            assert worst < 1e-9
