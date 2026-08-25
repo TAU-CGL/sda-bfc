@@ -27,7 +27,7 @@ from scipy.spatial.transform import Rotation
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from sda_bfc import TwoArmScene, UR5e, fold_config  # noqa: E402
-from planning.uncertain_touch import UncertainTouchSession  # noqa: E402
+from planning import CapsuleOracle, MeshOracle, TouchSession, Wall  # noqa: E402
 from uncertainty_expansion import expand_arm  # noqa: E402
 
 NUM_LINKS = 6
@@ -78,15 +78,29 @@ class ViewerState:
         self.placement_seed = 0
         self.session = None
         self.frames = []
+        self.walls = []
+        self.use_mesh_oracle = True
+        self.attempt_frames = []
         self.status = "press randomize placement"
 
     def randomize(self, ranges):
         self.placement_seed += 1
-        self.frames = []
-        self.session = UncertainTouchSession(
-            seed=self.placement_seed, ranges=ranges,
-            robot=robot, recorder=self._record)
+        self._build_session(ranges)
         self.status = f"placement #{self.placement_seed}"
+
+    def rebuild_with_walls(self, ranges, walls):
+        """Same placement seed => same X_gt/X_belief; touches reset."""
+        self.walls = list(walls)
+        if self.session is not None:
+            self._build_session(ranges)
+
+    def _build_session(self, ranges):
+        self.frames = []
+        oracle = MeshOracle if self.use_mesh_oracle else CapsuleOracle
+        self.session = TouchSession(
+            seed=self.placement_seed, range_tuple=ranges,
+            oracle_factory=oracle, walls=self.walls,
+            robot=robot, recorder=self._record)
 
     def _record(self, qA, qB):
         self.frames.append((qA, qB))
@@ -97,15 +111,21 @@ class ViewerState:
         start = len(self.frames)
         result = self.session.attempt()
         self.attempt_frames = self.frames[start:]
-        return (f"{result['outcome']} "
+        return (f"{result.outcome.value} "
                 f"({len(self.session.touches)} touches, "
-                f"plan {result['plan_time']:.1f}s)")
+                f"plan {result.plan_seconds:.1f}s)")
 
 
 def main():
     state = ViewerState()
     server = viser.ViserServer()
-    server.scene.add_grid("/ground", width=4.0, height=4.0)
+    floor = server.scene.add_grid("/floor", width=4.0, height=4.0)
+    wall_boxes = {}
+    for axis in ("x", "y"):
+        wall_boxes[axis] = server.scene.add_box(
+            f"/wall_{axis}", color=(160, 160, 160),
+            dimensions=(0.04, 3.0, 2.0) if axis == "x" else (3.0, 0.04, 2.0),
+            visible=False, opacity=0.35)
     server.scene.add_frame("/baseA", axes_length=0.15, axes_radius=0.004)
     base_gt = server.scene.add_frame("/baseB_true", axes_length=0.15,
                                      axes_radius=0.004)
@@ -147,6 +167,13 @@ def main():
     frame_slider = server.gui.add_slider("frame", 0, 1, 1, 0)
     show_expanded = server.gui.add_checkbox("show expanded collision", False)
     show_belief = server.gui.add_checkbox("show belief ghost", True)
+    with server.gui.add_folder("walls (persist across placements)"):
+        wall_controls = {
+            "x": (server.gui.add_checkbox("wall x", False),
+                  server.gui.add_slider("x offset (m)", -1.5, 1.5, 0.05, 1.0)),
+            "y": (server.gui.add_checkbox("wall y", False),
+                  server.gui.add_slider("y offset (m)", -1.5, 1.5, 0.05, 1.0)),
+        }
     with server.gui.add_folder("uncertainty range (+-)"):
         sliders = {
             "x": server.gui.add_slider("x (cm)", 0.0, 10.0, 0.25, 2.0),
@@ -158,6 +185,27 @@ def main():
         }
     path_handle = [None]
     expanded_handles = []
+
+    def current_walls():
+        return [Wall(axis, slider.value)
+                for axis, (checkbox, slider) in wall_controls.items()
+                if checkbox.value]
+
+    def redraw_workcell():
+        if state.session is None:
+            return
+        floor.position = (0.0, 0.0, state.session.workcell.floor_z)
+        for axis, (checkbox, slider) in wall_controls.items():
+            wall_boxes[axis].visible = checkbox.value
+            center = [0.0, 0.0, 1.0]
+            center[0 if axis == "x" else 1] = slider.value
+            wall_boxes[axis].position = center
+
+    def on_wall_change(_):
+        state.rebuild_with_walls(ranges(), current_walls())
+        status.value = "walls applied (touches reset)"
+        frame_slider.max = 1
+        redraw_placement()
 
     def ranges():
         return (sliders["x"].value / 100.0, sliders["y"].value / 100.0,
@@ -203,6 +251,7 @@ def main():
         base_belief.wxyz = Rotation.from_matrix(Xb[:3, :3]).as_quat(scalar_first=True)
         base_belief.position = Xb[:3, 3]
         set_config(fold_config(0.0), fold_config(0.0))
+        redraw_workcell()
         if path_handle[0] is not None:
             path_handle[0].remove()
             path_handle[0] = None
@@ -223,10 +272,15 @@ def main():
 
     @btn_randomize.on_click
     def _(_):
+        state.walls = current_walls()
         state.randomize(ranges())
         status.value = state.status
         frame_slider.max = 1
         redraw_placement()
+
+    for checkbox, slider in wall_controls.values():
+        checkbox.on_update(on_wall_change)
+        slider.on_update(on_wall_change)
 
     @btn_path.on_click
     def _(_):

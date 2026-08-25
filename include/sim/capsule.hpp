@@ -58,6 +58,18 @@ namespace sda_bfc {
         return segmentDistance(c1.a, c1.b, c2.a, c2.b) - (c1.r + c2.r);
     }
 
+    // A capsule is admitted while it stays on the free side:
+    // normal . p + r <= offset at both endpoints.
+    struct Halfspace {
+        R3 normal;
+        double offset;
+
+        bool admits(const Capsule& c) const {
+            return normal.dot(c.a) + c.r <= offset
+                && normal.dot(c.b) + c.r <= offset;
+        }
+    };
+
     // ------------------------------------------------------------------
     // Uncertainty expansion: the placement of the other arm is uncertain
     // within a +-range box in (x, y, z, roll, pitch, yaw); the static arm's

@@ -48,6 +48,11 @@ namespace sda_bfc {
             return evaluate(theta, &J);
         }
 
+        // Workcell constraints: exact for the static arm (known base),
+        // margined by the caller for the dynamic arm (uncertain base).
+        void addStaticHalfspace(const Halfspace& h) { staticHalfspaces_.push_back(h); }
+        void addDynamicHalfspace(const Halfspace& h) { dynamicHalfspaces_.push_back(h); }
+
         std::optional<ContactPose> generate(std::mt19937& gen) const {
             std::uniform_real_distribution<double> joint(-params_.jointRange,
                                                          params_.jointRange);
@@ -71,15 +76,17 @@ namespace sda_bfc {
                 // Distal joints cannot move links 0..link, so any violation
                 // among those pairs is unfixable: gate before the distal loop.
                 if (!proximalClear(qA, qB)) continue;
+                if (!admitted(qA, qB, params_.touchLink)) continue;
                 for (int attempt = 0; attempt < params_.maxDistalAttempts; attempt++) {
                     for (int i = 3; i < 6; i++) {
                         qA[i] = joint(gen);
                         qB[i] = joint(gen);
                     }
-                    if (scene_.validContact(qA, qB, link, link,
-                                            params_.clearanceTol,
-                                            params_.othersMargin,
-                                            params_.interiorMargin)) {
+                    if (admitted(qA, qB, kNumCapsuleLinks - 1)
+                            && scene_.validContact(qA, qB, link, link,
+                                                   params_.clearanceTol,
+                                                   params_.othersMargin,
+                                                   params_.interiorMargin)) {
                         return ContactPose{qA, qB};
                     }
                 }
@@ -90,6 +97,23 @@ namespace sda_bfc {
         const TwoArmScene& scene() const { return scene_; }
 
     private:
+        // Workcell admission for links kFirstWorkcellLink..lastLink (the base
+        // column stands on the floor by construction).
+        bool admitted(const JointConfig& qA, const JointConfig& qB,
+                      int lastLink) const {
+            auto capsA = scene_.model().capsules(qA);
+            auto capsB = scene_.model().capsules(qB, X_);
+            for (int i = 2; i <= lastLink; i++) {
+                for (const Halfspace& h : staticHalfspaces_) {
+                    if (!h.admits(capsA[i])) return false;
+                }
+                for (const Halfspace& h : dynamicHalfspaces_) {
+                    if (!h.admits(capsB[i])) return false;
+                }
+            }
+            return true;
+        }
+
         bool proximalClear(const JointConfig& qA, const JointConfig& qB) const {
             const int link = params_.touchLink;
             auto capsA = scene_.model().capsules(qA);
@@ -196,6 +220,7 @@ namespace sda_bfc {
         SE3 X_;
         double s_;
         ContactParams params_;
+        std::vector<Halfspace> staticHalfspaces_, dynamicHalfspaces_;
     };
 
 }

@@ -11,6 +11,7 @@
 #include <solvers/solver_smc.hpp>
 #include <solvers/solver_adam.hpp>
 #include <sim/experiment.hpp>
+#include <planning/rrt.hpp>
 
 namespace nb = nanobind;
 
@@ -238,6 +239,10 @@ NB_MODULE(_sda_bfc, m) {
                  return std::make_pair(f, J);
              },
              nb::arg("theta"))
+        .def("add_static_halfspace", &sda_bfc::ContactGenerator::addStaticHalfspace,
+             nb::arg("halfspace"))
+        .def("add_dynamic_halfspace", &sda_bfc::ContactGenerator::addDynamicHalfspace,
+             nb::arg("halfspace"))
         .def("generate",
              [](const sda_bfc::ContactGenerator& self, unsigned seed) {
                  std::mt19937 gen(seed);
@@ -258,4 +263,41 @@ NB_MODULE(_sda_bfc, m) {
           nb::arg("num_contacts"), nb::arg("seed") = 0,
           nb::arg("robot") = sda_bfc::UR5e{},
           nb::arg("params") = sda_bfc::ExperimentParams{});
+
+    m.def("cloud_intersects_capsule", &sda_bfc::cloudIntersectsCapsule,
+          nb::arg("points"), nb::arg("a"), nb::arg("b"), nb::arg("r"));
+
+    nb::class_<sda_bfc::Halfspace>(m, "Halfspace")
+        .def(nb::init<sda_bfc::R3, double>(), nb::arg("normal"), nb::arg("offset"))
+        .def_rw("normal", &sda_bfc::Halfspace::normal)
+        .def_rw("offset", &sda_bfc::Halfspace::offset);
+
+    nb::class_<sda_bfc::PlanningWorld>(m, "PlanningWorld")
+        .def("is_free", &sda_bfc::PlanningWorld::isFree, nb::arg("q"))
+        .def("edge_free", &sda_bfc::PlanningWorld::edgeFree,
+             nb::arg("q0"), nb::arg("q1"), nb::arg("step") = 0.05);
+
+    nb::class_<sda_bfc::BeliefWorld, sda_bfc::PlanningWorld>(m, "BeliefWorld")
+        .def(nb::init<const sda_bfc::UR5e&, const sda_bfc::SE3&,
+                      const sda_bfc::JointConfig&, const sda_bfc::UncertaintyRanges&>(),
+             nb::arg("robot"), nb::arg("x_belief"), nb::arg("q_static"),
+             nb::arg("ranges"))
+        .def("add_halfspace", &sda_bfc::BeliefWorld::addHalfspace, nb::arg("halfspace"))
+        .def("free_except", &sda_bfc::BeliefWorld::freeExcept,
+             nb::arg("q"), nb::arg("allowed_static_lo"),
+             nb::arg("allowed_static_hi"), nb::arg("allowed_moving_min"))
+        .def("corridor_edge_free", &sda_bfc::BeliefWorld::corridorEdgeFree,
+             nb::arg("q0"), nb::arg("q1"), nb::arg("allowed_static_lo"),
+             nb::arg("allowed_static_hi"), nb::arg("allowed_moving_min"),
+             nb::arg("step") = 0.02);
+
+    nb::class_<sda_bfc::Planner>(m, "Planner")
+        .def("plan", &sda_bfc::Planner::plan,
+             nb::arg("world"), nb::arg("start"), nb::arg("goal"), nb::arg("seed"));
+
+    nb::class_<sda_bfc::RRTPlanner, sda_bfc::Planner>(m, "RRTPlanner")
+        .def(nb::init<int, double, double, int, double>(),
+             nb::arg("max_iterations") = 3000, nb::arg("step_size") = 0.3,
+             nb::arg("goal_bias") = 0.15, nb::arg("shortcut_tries") = 60,
+             nb::arg("joint_range") = 3.14159265358979323846);
 }
