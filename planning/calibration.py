@@ -11,7 +11,7 @@ from sda_bfc import SolverNewton
 
 TOUCH_LINK = 3
 RADIUS_INDEX = 4
-PRIOR_MAX_Z = 0.2
+PRIOR_MAX_Z = 0.3
 PRIOR_MAX_TILT_DEG = 15.0
 STARTS = 500
 
