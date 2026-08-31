@@ -18,7 +18,7 @@ namespace sda_bfc {
         int maxDistalAttempts = 100;
         double clearanceTol = 1e-6;
         double othersMargin = 5e-3;
-        double interiorMargin = 0.03;
+        double interiorMargin = 0.35;
         int touchLink = kForearmLink;
     };
 
