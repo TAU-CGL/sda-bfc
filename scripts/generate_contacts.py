@@ -16,8 +16,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 from sda_bfc import (ContactGenerator, CylinderPose, Halfspace,  # noqa: E402
                      UR5e)
 
-DEFAULT_TRANSFORM = (0.500658, -0.917333, 0.272303,
-                     -0.004370, -0.000456, 0.000200)
+DEFAULT_TRANSFORM = (-0.24, -0.73, -0.25, 0, 0, 0)
 TOUCH_LINK = 3
 RADII_LINK_INDEX = 4
 
@@ -74,9 +73,9 @@ def main():
     X = se3_from_pose(np.asarray(args.transform, dtype=float))
     # contacts = generate_contacts(robot, X, args.count, args.seed, args.floor, args.wall_x, args.wall_y)
     planes = [
-        (0.0, np.array([0.0, 0.0, -1.0])),    # floor:  z >= 0
-        (0.285, np.array([0.0, 1.0, 0.0])),   # wall:   y <= 0.285
-        (0.430, np.array([-1.0, 0.0, 0.0])),  # wall:   x >= -0.430
+        # (0.0, np.array([0.0, 0.0, -1.0])),    # floor:  z >= 0
+        # (0.285, np.array([0.0, 1.0, 0.0])),   # wall:   y <= 0.285
+        # (0.430, np.array([-1.0, 0.0, 0.0])),  # wall:   x >= -0.430
     ]
     contacts = generate_contacts(robot, X, args.count, args.seed, planes)
 
