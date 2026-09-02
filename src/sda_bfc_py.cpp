@@ -4,6 +4,7 @@
 #include <nanobind/stl/pair.h>
 #include <nanobind/stl/vector.h>
 
+#include <contact_sampler.hpp>
 #include <fk/fk_ur5e.hpp>
 #include <geometry.hpp>
 #include <solvers/solver_newton.hpp>
@@ -22,6 +23,10 @@ NB_MODULE(_sda_bfc, m) {
         .def("get_cylinder_transform", &sda_bfc::UR5e::getCylinderTransform,
              nb::arg("link_index"), nb::arg("q"), nb::arg("z_offset") = 0.007)
         .def("get_link_radius", &sda_bfc::UR5e::getLinkRadius,
+             nb::arg("link_index"))
+        .def("get_link_z_offset", &sda_bfc::UR5e::getLinkZOffset,
+             nb::arg("link_index"))
+        .def("get_cylinder_radius", &sda_bfc::UR5e::getCylinderRadius,
              nb::arg("link_index"));
 
     nb::class_<sda_bfc::CylinderPose>(m, "CylinderPose")
@@ -93,4 +98,46 @@ NB_MODULE(_sda_bfc, m) {
         .def("solve_multistart", &sda_bfc::SolverAdam::solveMultistart,
              nb::arg("num_starts") = 2000, nb::arg("translation_range") = 1.2,
              nb::arg("max_iterations") = 2000, nb::arg("seed") = 0);
+
+    nb::class_<sda_bfc::ContactParams>(m, "ContactParams")
+        .def(nb::init<>())
+        .def_rw("max_iterations", &sda_bfc::ContactParams::maxIterations)
+        .def_rw("tolerance", &sda_bfc::ContactParams::tolerance)
+        .def_rw("damping", &sda_bfc::ContactParams::damping)
+        .def_rw("max_backtracks", &sda_bfc::ContactParams::maxBacktracks)
+        .def_rw("min_denom", &sda_bfc::ContactParams::minDenom)
+        .def_rw("joint_range", &sda_bfc::ContactParams::jointRange)
+        .def_rw("max_restarts", &sda_bfc::ContactParams::maxRestarts)
+        .def_rw("clearance_tol", &sda_bfc::ContactParams::clearanceTol)
+        .def_rw("interior_margin", &sda_bfc::ContactParams::interiorMargin);
+
+    nb::class_<sda_bfc::ContactPose>(m, "ContactPose")
+        .def_ro("q_a", &sda_bfc::ContactPose::qA)
+        .def_ro("q_b", &sda_bfc::ContactPose::qB);
+
+    nb::class_<sda_bfc::ContactSampler>(m, "ContactSampler")
+        .def("__init__",
+             [](sda_bfc::ContactSampler* self, const sda_bfc::UR5e& robot,
+                const sda_bfc::SE3& X, int idx_a, int idx_b,
+                sda_bfc::ContactParams params) {
+                 new (self) sda_bfc::ContactSampler(robot, X, idx_a, idx_b,
+                                                      params);
+             },
+             nb::arg("robot"), nb::arg("X"), nb::arg("idx_a"), nb::arg("idx_b"),
+             nb::arg("params") = sda_bfc::ContactParams{})
+        .def("residual", &sda_bfc::ContactSampler::residual, nb::arg("theta"))
+        .def("residual_with_jacobian",
+             [](const sda_bfc::ContactSampler& self,
+                const sda_bfc::ContactSampler::Theta& theta) {
+                 sda_bfc::ContactSampler::Theta J;
+                 double f = self.residualWithJacobian(theta, J);
+                 return std::make_pair(f, J);
+             },
+             nb::arg("theta"))
+        .def("sample",
+             [](const sda_bfc::ContactSampler& self, unsigned seed) {
+                 std::mt19937 gen(seed);
+                 return self.sample(gen);
+             },
+             nb::arg("seed"));
 }

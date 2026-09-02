@@ -1,5 +1,7 @@
 #pragma once
 
+#include <array>
+
 #include <Eigen/Dense>
 
 #include "../geometry.hpp"
@@ -12,13 +14,30 @@ namespace sda_bfc {
         using JointSpaceConfig = Eigen::Vector<double, d>;
         using DHParameter = Eigen::Vector<double, d>;
         using LinkRadii = Eigen::Vector<double, d + 1>;
+        using LinkZOffsets = Eigen::Vector<double, d>;
+        using RadiusIndexMap = std::array<int, d>;
 
-        ForwardKinematics(DHParameter dhD, DHParameter dhA, DHParameter dhAlpha, LinkRadii linkRadii) :
-            dhD(dhD), dhA(dhA), dhAlpha(dhAlpha), linkRadii(linkRadii) {
+        ForwardKinematics(DHParameter dhD, DHParameter dhA, DHParameter dhAlpha,
+                          LinkRadii linkRadii, LinkZOffsets linkZOffsets,
+                          RadiusIndexMap radiusIndex) :
+            dhD(dhD), dhA(dhA), dhAlpha(dhAlpha), linkRadii(linkRadii),
+            linkZOffsets(linkZOffsets), radiusIndex(radiusIndex) {
         }
 
         double getLinkRadius(int linkIndex) const {
             return linkRadii[linkIndex];
+        }
+
+        // Lateral offset of link linkIndex's physical tube from its DH frame
+        // line, applied along the frame z-axis (getCylinderTransform zOffset).
+        double getLinkZOffset(int linkIndex) const {
+            return linkZOffsets[linkIndex];
+        }
+
+        // Radius of the cylinder at axis index linkIndex (the linkRadii table
+        // is not aligned with the axis indices; this applies the mapping).
+        double getCylinderRadius(int linkIndex) const {
+            return linkRadii[radiusIndex[linkIndex]];
         }
 
         double getDhA(int i) const {
@@ -61,6 +80,8 @@ namespace sda_bfc {
     private:
         DHParameter dhD, dhA, dhAlpha;
         LinkRadii linkRadii;
+        LinkZOffsets linkZOffsets;
+        RadiusIndexMap radiusIndex;
 
         static inline const SE3 Z_TO_X = (
             SE3() << 
