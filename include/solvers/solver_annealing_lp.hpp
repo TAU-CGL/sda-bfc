@@ -1,6 +1,7 @@
 #pragma once
 
 #include <algorithm>
+#include <cmath>
 #include <random>
 #include <vector>
 
@@ -87,9 +88,10 @@ namespace sda_bfc {
     public:
         SolverAnnealingLP(const std::vector<SE3>& As, const std::vector<SE3>& Bs,
                           double radiusA, double radiusB,
-                          int nInitial = 5000, int nElites = 40, int nPerElite = 40,
-                          double eps = 2e-3, unsigned seed = 0,
-                          std::vector<double> sigmaSchedule = {0.3, 0.15, 0.075, 0.03, 0.01}) :
+                          int nInitial = 3464, int nElites = 42, int nPerElite = 36,
+                          double eps = 1e-3, unsigned seed = 0,
+                          std::vector<double> sigmaSchedule = {0.3304, 0.1311, 0.052, 0.0206, 0.0082,
+                                                               0.0032, 0.0013, 0.0005, 0.0002, 0.0001}) :
             Solver(As, Bs, radiusA, radiusB),
             nInitial(nInitial), nElites(nElites), nPerElite(nPerElite),
             eps(eps), seed(seed), sigmaSchedule(std::move(sigmaSchedule)) {}
@@ -339,10 +341,19 @@ namespace sda_bfc {
             Eigen::MatrixXd C(k, 3);
             for (int t = 0; t < k; t++)
                 coefficients(Rm, t, c0[t], C(t, 0), C(t, 1), C(t, 2));
-            auto [v, score] = solveTranslation(c0, C, vInits);
-            if (score < 10.0 * eps)
-                return chebyshevLP(c0, C, v);
-            return {v, score};
+            // No LP per sample: the sign-fixed least-squares residual bounds the Chebyshev
+            // one from above, and the LP is applied once, to the winner, in solve().
+            return solveTranslation(c0, C, vInits);
+        }
+
+        std::pair<R3, double> polish(const Eigen::Quaterniond& q, const R3& v) const {
+            Eigen::Matrix3d Rm = q.toRotationMatrix();
+            const int k = (int)Bs.size();
+            Eigen::VectorXd c0(k);
+            Eigen::MatrixXd C(k, 3);
+            for (int t = 0; t < k; t++)
+                coefficients(Rm, t, c0[t], C(t, 0), C(t, 1), C(t, 2));
+            return chebyshevLP(c0, C, v);
         }
 
         static SE3 weightedAveragePose(const std::vector<Eigen::Quaterniond>& quats,
@@ -408,6 +419,10 @@ namespace sda_bfc {
             }
 
             std::sort(samples.begin(), samples.end(), byScore);
+            {
+                auto [v, score] = polish(samples[0].q, samples[0].v);
+                if (std::isfinite(score)) samples[0].v = v, samples[0].score = score;
+            }
             const Sample& best = samples[0];
             std::vector<Sample> feasible;
             for (const Sample& sample : samples)

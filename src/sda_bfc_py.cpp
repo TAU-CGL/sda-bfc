@@ -68,9 +68,10 @@ NB_MODULE(_sda_bfc, m) {
         .def(nb::init<const std::vector<sda_bfc::SE3>&, const std::vector<sda_bfc::SE3>&,
                       double, double, int, int, int, double, unsigned, std::vector<double>>(),
              nb::arg("As"), nb::arg("Bs"), nb::arg("radius_a"), nb::arg("radius_b"),
-             nb::arg("n_initial") = 5000, nb::arg("n_elites") = 40, nb::arg("n_per_elite") = 40,
-             nb::arg("eps") = 2e-3, nb::arg("seed") = 0,
-             nb::arg("sigma_schedule") = std::vector<double>{0.3, 0.15, 0.075, 0.03, 0.01})
+             nb::arg("n_initial") = 5000, nb::arg("n_elites") = 50, nb::arg("n_per_elite") = 50,
+             nb::arg("eps") = 1e-3, nb::arg("seed") = 0,
+             nb::arg("sigma_schedule") = std::vector<double>{0.3304, 0.1311, 0.052, 0.0206, 0.0082,
+                                                             0.0032, 0.0013, 0.0005, 0.0002, 0.0001})
         .def("cost", &sda_bfc::SolverAnnealingLP::cost, nb::arg("X"))
         .def("solve",
              [](const sda_bfc::SolverAnnealingLP& self) { return self.solve(sda_bfc::SE3::Identity()); });
