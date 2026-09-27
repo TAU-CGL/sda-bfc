@@ -3,7 +3,11 @@
 -- Meshes are loaded from the resources/ur5e folder (packed by the editor into ur5e.dat): collision/*.stl feed Bullet,
 -- visual/*.stl (one file per URDF material, baked from the .dae files by tools/dae2stl.py) are what you see.
 -- Everything created here is prefixed with __ENGINE__ so that it is never written into the saved scene or shared assets.
+-- Collisions: getCollisions() lists contacts with other scene objects (including other robots), getSelfCollisions() lists
+-- contacts between this robot's own links except the pairs whitelisted with allowCurrentSelfCollisions().
 UR5e = LE3ScriptObject:new()
+UR5e.ignore = {} -- scene object names whose contacts never count, e.g. UR5e.ignore.table = true
+UR5e.margin = 0.003 -- Bullet collision margin per link (metres); the engine default of 0.04 reports contacts ~8 cm before the meshes touch
 
 -- Editor material used for each material of the visual meshes. If a name does not exist in the project, a built-in
 -- __ENGINE__ copy with the URDF colors is created instead, so the robot looks right without any editor setup
@@ -79,6 +83,7 @@ end
 
 function UR5e:init()
     self.joints, self.links, self.linkNames, self.hits, self.collisions = {0, -PI/2, 0, -PI/2, 0, 0, 0}, {}, {}, {}, {}
+    self.selfHits, self.selfCollisions, self.allowed, self.lastFree = {}, {}, {}, {table.unpack(self.joints)}
     for i, L in ipairs(LINKS) do
         if L.mesh then
             local name = "__ENGINE__" .. self.name .. "_" .. L.name
@@ -92,7 +97,12 @@ function UR5e:init()
             self.linkNames[name] = L.name
             LE3EventManager.subscribe("EVT_ON_COLLISION__" .. name, self.name, function(data)
                 local other = (data.objectA == name) and data.objectB or data.objectA
-                if not self.linkNames[other] then self.hits[L.name] = other end -- ignore self-collisions of the robot
+                local link = self.linkNames[other] -- set when the other body is one of this robot's own links
+                if not link then
+                    if not UR5e.ignore[other] then self.hits[L.name] = other end
+                elseif L.name < link and not self.allowed[L.name .. "|" .. link] then -- each pair once (both links get the event)
+                    self.selfHits[L.name .. "|" .. link] = true
+                end
             end)
         end
     end
@@ -110,9 +120,18 @@ function UR5e:getToolPose() return self.tool.p, self.tool.q end -- tool0 (flange
 -- Collisions with non-robot objects found by the last physics step: {link = "world object name", ...}
 function UR5e:getCollisions() return self.collisions end
 function UR5e:isInCollision() return next(self.collisions) ~= nil end
+-- Self-collisions found by the last physics step: {["linkA|linkB"] = true, ...}, excluding whitelisted pairs
+function UR5e:getSelfCollisions() return self.selfCollisions end
+function UR5e:isInSelfCollision() return next(self.selfCollisions) ~= nil end
+function UR5e:allowCurrentSelfCollisions() for pair in pairs(self.selfCollisions) do self.allowed[pair] = true end end
+-- Last configuration (6 joints + gripper) that a physics step found free of any collision
+function UR5e:getLastFree() return {table.unpack(self.lastFree)} end
 
 function UR5e:update(deltaTime)
-    self.collisions, self.hits = self.hits, {}
+    self.collisions, self.hits, self.selfCollisions, self.selfHits = self.hits, {}, self.selfHits, {}
+    -- these contacts come from the physics step that saw the configuration applied by the previous update
+    if self.applied and not self:isInCollision() and not self:isInSelfCollision() then self.lastFree = self.applied end
+    self.applied = {table.unpack(self.joints)}
     local px, py, pz = LE3Transform.get_position(self.transform)
     local poses, T = UR5e.fk({p = {px, py, pz}, q = {LE3Transform.get_rotation(self.transform)}}, self.joints)
     self.tool = T[TOOL0]
@@ -124,6 +143,7 @@ function UR5e:update(deltaTime)
             LE3PhysicsComponent.warp(link.physics, p[1], p[2], p[3], q[1], q[2], q[3], q[4])
         else
             LE3PhysicsComponent.set_kinematic(link.physics, true) -- no-op until the rigid body exists (first frame)
+            if PhysicsEx then PhysicsEx.set_margin(link.physics, UR5e.margin) end -- PhysicsEx exists in viz only (src/lua_physics_ext.cpp)
         end
     end
 end

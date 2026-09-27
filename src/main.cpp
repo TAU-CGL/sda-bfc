@@ -7,17 +7,28 @@ using namespace le3;
 #include <fmt/core.h>
 #include <fmt/format.h>
 
+void registerImGuiEx(); // lua_imgui_ext.cpp
+void registerPhysicsEx(); // lua_physics_ext.cpp
+
 class SDABFC_Visualization : public LE3GameLogic {
 public:
     void init() override {
         loadBootstrapConfig();
+        registerImGuiEx();
+        registerPhysicsEx();
         loadProjectArchives();
         loadInitialScene();
         initFPSDisplay();
     }
 
     void update(float deltaTime) override {
-        LE3GetSceneManager().updateScenes(deltaTime);
+        // Same as LE3GetSceneManager().updateScenes(deltaTime), except that Bullet is stepped exactly once per frame.
+        // The engine's own call steps at a fixed 60 Hz, so above 60 FPS collision detection only runs every few frames
+        // and the contact reports lag the poses set by scripts; the robots' collision bookkeeping needs them in lockstep.
+        LE3GetPhysicsManager().update(1.0f / 60.0f + 1e-5f);
+        for (auto& [name, scene] : LE3GetSceneManager().getScenes()) if (!scene->isInspected()) scene->preUpdate();
+        for (auto& [name, scene] : LE3GetSceneManager().getScenes()) scene->update(deltaTime);
+        for (auto& [name, scene] : LE3GetSceneManager().getScenes()) if (!scene->isInspected()) scene->postUpdate();
         updateFPSDisplay(deltaTime);
     }
 

@@ -10,7 +10,7 @@ set( CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/lib)
 # Setup bootstrap macros and files
 ########################################
 set(DEFAULT_PROJECT "resources")
-set(DEFAULT_PROJECT_INITIAL_SCENE "main.lua")
+set(DEFAULT_PROJECT_INITIAL_SCENE "two_arms.lua")
 set(DEFAULT_PROJECT_ABSOLUTE "${CMAKE_SOURCE_DIR}/${DEFAULT_PROJECT}")
 
 set(BOOTSTRAP_FILE "bootstrap.lua")
@@ -34,6 +34,7 @@ endif()
 ########################################
 
 find_package(le3 REQUIRED)
+find_package(Bullet REQUIRED) # headers only, for src/lua_physics_ext.cpp
 
 ########################################
 
@@ -57,5 +58,6 @@ endif()
 
 ########################################
 
-add_executable(viz src/main.cpp)
+add_executable(viz src/main.cpp src/lua_imgui_ext.cpp src/lua_physics_ext.cpp)
+target_include_directories(viz PRIVATE ${BULLET_INCLUDE_DIRS})
 target_link_libraries(viz PRIVATE le3::le3 ${frameworks})
