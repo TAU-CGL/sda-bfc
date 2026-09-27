@@ -9,6 +9,7 @@ using namespace le3;
 
 void registerImGuiEx(); // lua_imgui_ext.cpp
 void registerPhysicsEx(); // lua_physics_ext.cpp
+void registerMeshCollide(); // lua_mesh_collide.cpp
 
 class SDABFC_Visualization : public LE3GameLogic {
 public:
@@ -16,6 +17,7 @@ public:
         loadBootstrapConfig();
         registerImGuiEx();
         registerPhysicsEx();
+        registerMeshCollide();
         loadProjectArchives();
         loadInitialScene();
         initFPSDisplay();

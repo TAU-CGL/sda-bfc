@@ -1,13 +1,16 @@
 -- UR5e arm with a Robotiq 2F-85 gripper, built from the ur_description and robotiq URDFs, driven by joint values in radians.
 -- Add in-editor as a ScriptObject with Classname = "UR5e"; the object's transform is the robot's base frame (Y-up).
--- Meshes are loaded from the resources/ur5e folder (packed by the editor into ur5e.dat): collision/*.stl feed Bullet,
--- visual/*.stl (one file per URDF material, baked from the .dae files by tools/dae2stl.py) are what you see.
+-- Meshes are loaded from the resources/ur5e folder (packed by the editor into ur5e.dat): visual/*.stl (one file per URDF
+-- material, baked from the .dae files by tools/dae2stl.py) are what you see, collision/*.stl feed Bullet as convex hulls.
 -- Everything created here is prefixed with __ENGINE__ so that it is never written into the saved scene or shared assets.
 -- Collisions: getCollisions() lists contacts with other scene objects (including other robots), getSelfCollisions() lists
--- contacts between this robot's own links except the pairs whitelisted with allowCurrentSelfCollisions().
+-- contacts between this robot's own links except adjacent ones and pairs whitelisted with allowCurrentSelfCollisions().
+-- Link-to-link contacts (own links and other robots) are exact intersections of the visual meshes, computed by the
+-- MeshCollide binding of viz (src/lua_mesh_collide.cpp); contacts with anything else come from Bullet's convex hulls.
 UR5e = LE3ScriptObject:new()
 UR5e.ignore = {} -- scene object names whose contacts never count, e.g. UR5e.ignore.table = true
 UR5e.margin = 0.003 -- Bullet collision margin per link (metres); the engine default of 0.04 reports contacts ~8 cm before the meshes touch
+UR5e.linkOf = {} -- link object name -> {arm = UR5e instance, link = link name}, for all robots in the scene
 
 -- Editor material used for each material of the visual meshes. If a name does not exist in the project, a built-in
 -- __ENGINE__ copy with the URDF colors is created instead, so the robot looks right without any editor setup
@@ -83,7 +86,7 @@ end
 
 function UR5e:init()
     self.joints, self.links, self.linkNames, self.hits, self.collisions = {0, -PI/2, 0, -PI/2, 0, 0, 0}, {}, {}, {}, {}
-    self.selfHits, self.selfCollisions, self.allowed, self.lastFree = {}, {}, {}, {table.unpack(self.joints)}
+    self.selfHits, self.selfCollisions, self.allowed, self.objName, self.lastFree = {}, {}, {}, {}, {table.unpack(self.joints)}
     for i, L in ipairs(LINKS) do
         if L.mesh then
             local name = "__ENGINE__" .. self.name .. "_" .. L.name
@@ -92,11 +95,13 @@ function UR5e:init()
             for _, part in ipairs(L.parts) do -- visual parts ride along as children of the collision body
                 self:addModel(name .. "_" .. part, "visual/" .. L.mesh .. "_" .. part .. ".stl", nil, UR5e.materials[part], {IsRigidBody = false})
                 LE3Scene.reparent(self.scene, name .. "_" .. part, name)
+                if MeshCollide then MeshCollide.add(name, "/ur5e/visual/" .. L.mesh .. "_" .. part .. ".stl") end
             end
-            self.links[i] = {transform = LE3Object.get_transform(obj), physics = LE3Object.get_physics_component(obj)}
-            self.linkNames[name] = L.name
+            self.links[i] = {transform = LE3Object.get_transform(obj), physics = LE3Object.get_physics_component(obj), obj = name}
+            self.linkNames[name], self.objName[L.name], UR5e.linkOf[name] = L.name, name, {arm = self, link = L.name}
             LE3EventManager.subscribe("EVT_ON_COLLISION__" .. name, self.name, function(data)
                 local other = (data.objectA == name) and data.objectB or data.objectA
+                if MeshCollide and UR5e.linkOf[other] then return end -- link-to-link contacts come from the mesh test in update()
                 local link = self.linkNames[other] -- set when the other body is one of this robot's own links
                 if not link then
                     if not UR5e.ignore[other] then self.hits[L.name] = other end
@@ -105,6 +110,11 @@ function UR5e:init()
                 end
             end)
         end
+    end
+    for _, L in ipairs(LINKS) do -- adjacent links touch by construction: never a self-collision
+        local p = L.parent
+        while p and not LINKS[p].mesh do p = LINKS[p].parent end
+        if L.mesh and p then self:allow(L.name, LINKS[p].name) end
     end
     self:update(0)
 end
@@ -117,19 +127,25 @@ function UR5e:setGripper(q) self.joints[7] = q end
 function UR5e:getGripper() return self.joints[7] end
 function UR5e:getToolPose() return self.tool.p, self.tool.q end -- tool0 (flange) in world: position {x,y,z}, rotation {w,x,y,z}
 
--- Collisions with non-robot objects found by the last physics step: {link = "world object name", ...}
+-- Contacts with objects outside this robot (other robots' links included) found by the last update: {link = "object name", ...}
 function UR5e:getCollisions() return self.collisions end
 function UR5e:isInCollision() return next(self.collisions) ~= nil end
--- Self-collisions found by the last physics step: {["linkA|linkB"] = true, ...}, excluding whitelisted pairs
+-- Self-collisions found by the last update: {["linkA|linkB"] = true, ...}, excluding whitelisted pairs
 function UR5e:getSelfCollisions() return self.selfCollisions end
 function UR5e:isInSelfCollision() return next(self.selfCollisions) ~= nil end
-function UR5e:allowCurrentSelfCollisions() for pair in pairs(self.selfCollisions) do self.allowed[pair] = true end end
--- Last configuration (6 joints + gripper) that a physics step found free of any collision
+function UR5e:allowCurrentSelfCollisions() for pair in pairs(self.selfCollisions) do self:allow(pair:match("^(.-)|(.*)$")) end end
+function UR5e:allow(x, y) -- whitelist a pair of this robot's links (by link name)
+    if x > y then x, y = y, x end
+    self.allowed[x .. "|" .. y] = true
+    if MeshCollide then MeshCollide.ignore(self.objName[x], self.objName[y]) end
+end
+-- Last configuration (6 joints + gripper) that an update found free of any collision
 function UR5e:getLastFree() return {table.unpack(self.lastFree)} end
 
 function UR5e:update(deltaTime)
     self.collisions, self.hits, self.selfCollisions, self.selfHits = self.hits, {}, self.selfHits, {}
-    -- these contacts come from the physics step that saw the configuration applied by the previous update
+    -- contacts of the configuration applied by the previous update: Bullet's from the physics step, the exact ones now
+    if MeshCollide and self.applied then self:meshContacts() end
     if self.applied and not self:isInCollision() and not self:isInSelfCollision() then self.lastFree = self.applied end
     self.applied = {table.unpack(self.joints)}
     local px, py, pz = LE3Transform.get_position(self.transform)
@@ -139,11 +155,29 @@ function UR5e:update(deltaTime)
         local p, q = poses[i].p, poses[i].q
         LE3Transform.set_position(link.transform, p[1], p[2], p[3])
         LE3Transform.set_rotation(link.transform, q[1], q[2], q[3], q[4])
+        if MeshCollide then MeshCollide.set_pose(link.obj, p[1], p[2], p[3], q[1], q[2], q[3], q[4]) end
         if LE3PhysicsComponent.is_kinematic(link.physics) then -- Bullet only learns the new pose through warp
             LE3PhysicsComponent.warp(link.physics, p[1], p[2], p[3], q[1], q[2], q[3], q[4])
         else
             LE3PhysicsComponent.set_kinematic(link.physics, true) -- no-op until the rigid body exists (first frame)
             if PhysicsEx then PhysicsEx.set_margin(link.physics, UR5e.margin) end -- PhysicsEx exists in viz only (src/lua_physics_ext.cpp)
+        end
+    end
+end
+
+-- Exact contacts of this robot's visual meshes (at their current poses) with its own links and other robots' links
+function UR5e:meshContacts()
+    local pr = MeshCollide.pairs()
+    for k = 1, #pr, 2 do
+        local na, nb = pr[k], pr[k + 1]
+        local a, b = UR5e.linkOf[na], UR5e.linkOf[nb]
+        if a and b and a.arm ~= self then a, b, nb = b, a, na end -- make `a` one of this robot's links
+        if a and b and a.arm == self then
+            if b.arm ~= self then self.collisions[a.link] = nb
+            else
+                local key = a.link < b.link and a.link .. "|" .. b.link or b.link .. "|" .. a.link
+                if not self.allowed[key] then self.selfCollisions[key] = true end
+            end
         end
     end
 end
