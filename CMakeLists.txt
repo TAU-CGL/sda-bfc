@@ -35,6 +35,7 @@ endif()
 
 find_package(le3 REQUIRED)
 find_package(Bullet REQUIRED) # headers only, for src/lua_physics_ext.cpp
+find_package(fcl REQUIRED) # exact mesh-mesh contacts in src/lua_mesh_collide.cpp (brew install fcl)
 
 ########################################
 
@@ -60,5 +61,5 @@ endif()
 
 add_executable(viz src/main.cpp src/lua_imgui_ext.cpp src/lua_physics_ext.cpp src/lua_mesh_collide.cpp)
 target_include_directories(viz PRIVATE ${BULLET_INCLUDE_DIRS})
-set_source_files_properties(src/lua_mesh_collide.cpp PROPERTIES COMPILE_OPTIONS "-O2") # the mesh tests run every frame; ~50x slower unoptimised
-target_link_libraries(viz PRIVATE le3::le3 ${frameworks})
+set_source_files_properties(src/lua_mesh_collide.cpp PROPERTIES COMPILE_OPTIONS "-O2") # FCL tree building is instantiated here; slow unoptimised
+target_link_libraries(viz PRIVATE le3::le3 fcl ${frameworks})
