@@ -12,9 +12,7 @@ public:
     void init() override {
         setDisplayFPS(true);
         LE3GameBase::init();
-        
     }
-
 private:
 };
 
