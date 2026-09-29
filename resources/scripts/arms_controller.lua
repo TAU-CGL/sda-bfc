@@ -2,7 +2,6 @@
 -- Dragging moves an arm live. On release, if that arm is in a self-collision or touches anything else (the other arm,
 -- the world), it bisects between the last collision-free configuration and the released one and settles on the
 -- configuration where the links just touch (to about 0.1 deg).
--- Needs the ImGuiEx Lua bindings from src/lua_imgui_ext.cpp, so the panel exists in viz only, not in the editor.
 ArmsController = LE3ScriptObject:new()
 ArmsController.arms = {"r1", "r2"} -- names of the UR5e script objects in the scene
 
@@ -35,10 +34,9 @@ function ArmsController:settle(arm, s, blocked)
 end
 
 function ArmsController:update(deltaTime)
-    if not ImGuiEx then return end
     self.frame = self.frame + 1
-    ImGuiEx.SetNextWindowSize(440, 500)
-    ImGuiEx.Begin("Arms")
+    ImGui.SetNextWindowSize(440, 500)
+    ImGui.Begin("Arms")
     for _, name in ipairs(self.arms) do
         local arm = UR5e._refs[name]
         local s = self.state[name]
@@ -55,12 +53,12 @@ function ArmsController:update(deltaTime)
             ImGui.TextColored(blocked and 1 or 0.4, blocked and 0.4 or 1, 0.4, 1, name .. (blocked and "   COLLISION" or "   ok"))
             for i, sl in ipairs(SLIDERS) do
                 local scale = i < 7 and DEG or 1
-                local v, changed = ImGuiEx.SliderFloat(name .. " " .. sl[1], s.q[i] * scale, sl[2], sl[3], i < 7 and "%.1f deg" or "%.2f rad")
+                local v, changed = ImGui.SliderFloat(name .. " " .. sl[1], s.q[i] * scale, sl[2], sl[3], i < 7 and "%.1f deg" or "%.2f rad")
                 if changed then s.q[i] = v / scale; s.hi, s.wait = nil, nil; apply(arm, s.q) end -- grabbing a slider also cancels a settle in progress
-                if ImGuiEx.IsItemDeactivatedAfterEdit() then s.wait = VERDICT_FRAMES end
+                if ImGui.IsItemDeactivatedAfterEdit() then s.wait = VERDICT_FRAMES end
             end
         end
-        ImGuiEx.Separator()
+        ImGui.Separator()
     end
-    ImGuiEx.End()
+    ImGui.End()
 end

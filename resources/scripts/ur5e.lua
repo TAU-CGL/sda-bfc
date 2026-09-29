@@ -6,7 +6,7 @@
 -- Collisions: getCollisions() lists contacts with other scene objects (including other robots), getSelfCollisions() lists
 -- contacts between this robot's own links except adjacent ones and pairs whitelisted with allowCurrentSelfCollisions().
 -- Link-to-link contacts (own links and other robots) are exact intersections of the visual meshes, computed by the
--- MeshCollide binding of viz (src/lua_mesh_collide.cpp); contacts with anything else come from Bullet's convex hulls.
+-- engine's LE3MeshCollision (FCL); contacts with anything else come from Bullet's convex hulls.
 UR5e = LE3ScriptObject:new()
 UR5e.ignore = {} -- scene object names whose contacts never count, e.g. UR5e.ignore.table = true
 UR5e.margin = 0.003 -- Bullet collision margin per link (metres); the engine default of 0.04 reports contacts ~8 cm before the meshes touch
@@ -95,13 +95,13 @@ function UR5e:init()
             for _, part in ipairs(L.parts) do -- visual parts ride along as children of the collision body
                 self:addModel(name .. "_" .. part, "visual/" .. L.mesh .. "_" .. part .. ".stl", nil, UR5e.materials[part], {IsRigidBody = false})
                 LE3Scene.reparent(self.scene, name .. "_" .. part, name)
-                if MeshCollide then MeshCollide.add(name, "/ur5e/visual/" .. L.mesh .. "_" .. part .. ".stl") end
+                LE3MeshCollision.add(name, "/ur5e/visual/" .. L.mesh .. "_" .. part .. ".stl")
             end
             self.links[i] = {transform = LE3Object.get_transform(obj), physics = LE3Object.get_physics_component(obj), obj = name}
             self.linkNames[name], self.objName[L.name], UR5e.linkOf[name] = L.name, name, {arm = self, link = L.name}
             LE3EventManager.subscribe("EVT_ON_COLLISION__" .. name, self.name, function(data)
                 local other = (data.objectA == name) and data.objectB or data.objectA
-                if MeshCollide and UR5e.linkOf[other] then return end -- link-to-link contacts come from the mesh test in update()
+                if UR5e.linkOf[other] then return end -- link-to-link contacts come from the mesh test in update()
                 local link = self.linkNames[other] -- set when the other body is one of this robot's own links
                 if not link then
                     if not UR5e.ignore[other] then self.hits[L.name] = other end
@@ -137,7 +137,7 @@ function UR5e:allowCurrentSelfCollisions() for pair in pairs(self.selfCollisions
 function UR5e:allow(x, y) -- whitelist a pair of this robot's links (by link name)
     if x > y then x, y = y, x end
     self.allowed[x .. "|" .. y] = true
-    if MeshCollide then MeshCollide.ignore(self.objName[x], self.objName[y]) end
+    LE3MeshCollision.ignore(self.objName[x], self.objName[y])
 end
 -- Last configuration (6 joints + gripper) that an update found free of any collision
 function UR5e:getLastFree() return {table.unpack(self.lastFree)} end
@@ -145,7 +145,7 @@ function UR5e:getLastFree() return {table.unpack(self.lastFree)} end
 function UR5e:update(deltaTime)
     self.collisions, self.hits, self.selfCollisions, self.selfHits = self.hits, {}, self.selfHits, {}
     -- contacts of the configuration applied by the previous update: Bullet's from the physics step, the exact ones now
-    if MeshCollide and self.applied then self:meshContacts() end
+    if self.applied then self:meshContacts() end
     if self.applied and not self:isInCollision() and not self:isInSelfCollision() then self.lastFree = self.applied end
     self.applied = {table.unpack(self.joints)}
     local px, py, pz = LE3Transform.get_position(self.transform)
@@ -155,19 +155,19 @@ function UR5e:update(deltaTime)
         local p, q = poses[i].p, poses[i].q
         LE3Transform.set_position(link.transform, p[1], p[2], p[3])
         LE3Transform.set_rotation(link.transform, q[1], q[2], q[3], q[4])
-        if MeshCollide then MeshCollide.set_pose(link.obj, p[1], p[2], p[3], q[1], q[2], q[3], q[4]) end
+        LE3MeshCollision.set_pose(link.obj, p[1], p[2], p[3], q[1], q[2], q[3], q[4])
         if LE3PhysicsComponent.is_kinematic(link.physics) then -- Bullet only learns the new pose through warp
             LE3PhysicsComponent.warp(link.physics, p[1], p[2], p[3], q[1], q[2], q[3], q[4])
         else
             LE3PhysicsComponent.set_kinematic(link.physics, true) -- no-op until the rigid body exists (first frame)
-            if PhysicsEx then PhysicsEx.set_margin(link.physics, UR5e.margin) end -- PhysicsEx exists in viz only (src/lua_physics_ext.cpp)
+            LE3PhysicsComponent.set_margin(link.physics, UR5e.margin)
         end
     end
 end
 
 -- Exact contacts of this robot's visual meshes (at their current poses) with its own links and other robots' links
 function UR5e:meshContacts()
-    local pr = MeshCollide.pairs()
+    local pr = LE3MeshCollision.pairs()
     for k = 1, #pr, 2 do
         local na, nb = pr[k], pr[k + 1]
         local a, b = UR5e.linkOf[na], UR5e.linkOf[nb]
