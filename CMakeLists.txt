@@ -81,3 +81,18 @@ target_link_libraries(test_sdf PRIVATE CGAL::CGAL glm::glm assimp::assimp GTest:
 target_compile_features(test_sdf PRIVATE cxx_std_17)
 target_compile_definitions(test_sdf PRIVATE MESH_DIR="${CMAKE_SOURCE_DIR}/resources/ur5e/visual")
 gtest_discover_tests(test_sdf)
+
+########################################
+# Benchmarks (always optimized)
+########################################
+
+if(APPLE)
+    list(APPEND CMAKE_PREFIX_PATH /opt/homebrew/opt/libomp) # brew install libomp
+endif()
+find_package(OpenMP REQUIRED)
+add_executable(bench_sdf src/benchmarks/bench_sdf.cpp src/dabfc/sdf.cpp)
+target_include_directories(bench_sdf PRIVATE include)
+target_link_libraries(bench_sdf PRIVATE CGAL::CGAL glm::glm assimp::assimp OpenMP::OpenMP_CXX)
+target_compile_features(bench_sdf PRIVATE cxx_std_17)
+target_compile_options(bench_sdf PRIVATE -O2)
+target_compile_definitions(bench_sdf PRIVATE NDEBUG CGAL_NDEBUG MESH_DIR="${CMAKE_SOURCE_DIR}/resources/ur5e/visual")
