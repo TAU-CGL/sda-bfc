@@ -71,6 +71,9 @@ Testing/
 .DS_Store
 imgui.ini
 le3edcache.dat
+.clang-format
+.editorconfig
+.vscode/
 
 build/
 bin/

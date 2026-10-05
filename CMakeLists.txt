@@ -57,5 +57,27 @@ endif()
 
 ########################################
 
-add_executable(viz src/main.cpp)
+include_directories(${CMAKE_SOURCE_DIR}/include)
+add_executable(viz 
+    src/main.cpp
+    src/dabfc/sdf.cpp
+)
 target_link_libraries(viz PRIVATE le3::le3 ${frameworks})
+
+########################################
+# Tests
+########################################
+
+find_package(CGAL REQUIRED)
+include(FetchContent)
+FetchContent_Declare(googletest URL https://github.com/google/googletest/releases/download/v1.17.0/googletest-1.17.0.tar.gz DOWNLOAD_EXTRACT_TIMESTAMP TRUE)
+FetchContent_MakeAvailable(googletest)
+include(GoogleTest)
+enable_testing()
+
+add_executable(test_sdf tests/test_sdf.cpp src/dabfc/sdf.cpp)
+target_include_directories(test_sdf PRIVATE include)
+target_link_libraries(test_sdf PRIVATE CGAL::CGAL glm::glm assimp::assimp GTest::gtest_main)
+target_compile_features(test_sdf PRIVATE cxx_std_17)
+target_compile_definitions(test_sdf PRIVATE MESH_DIR="${CMAKE_SOURCE_DIR}/resources/ur5e/visual")
+gtest_discover_tests(test_sdf)
