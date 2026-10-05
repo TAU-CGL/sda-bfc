@@ -1,25 +1,16 @@
-#ifndef DABFC_SDF_HPP
-#define DABFC_SDF_HPP
+#ifndef DABFC_SDF_H_
+#define DABFC_SDF_H_
 
 #include <string>
 
 #include <glm/glm.hpp>
 #include <glm/gtc/constants.hpp>
 
-#include <CGAL/AABB_traits_3.h>
-#include <CGAL/AABB_tree.h>
-#include <CGAL/AABB_triangle_primitive_3.h>
-#include <CGAL/Simple_cartesian.h>
-using Kernel = CGAL::Simple_cartesian<double>;
-using Point = Kernel::Point_3;
-using Vector = Kernel::Vector_3;
-using Triangle = Kernel::Triangle_3;
-using Primitive = CGAL::AABB_triangle_primitive_3<Kernel, std::vector<Triangle>::const_iterator>;
-using AABB_tree = CGAL::AABB_tree<CGAL::AABB_traits_3<Kernel, Primitive>>;
-
+#include "dabfc/cgal.h"
 
 namespace dabfc {
 
+    
 class Sdf {
 public:
     virtual float value_at(glm::vec3 p) const = 0;
@@ -48,4 +39,4 @@ private:
 
 } // namespace dabfc
 
-#endif // DABFC_SDF_HPP
+#endif // DABFC_SDF_H_
