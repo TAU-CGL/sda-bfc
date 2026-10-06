@@ -1,23 +1,21 @@
+#include <memory>
+
 #include <le3/le3.h>
-#include <le3/ui/_NMB.h>
-using namespace le3;
 
-#include <filesystem>
+#include "lua_dual_arm.h"
 
-#include <fmt/core.h>
-#include <fmt/format.h>
-
-class SDABFC_Visualization : public LE3GameBase {
+class Visualization : public le3::LE3GameBase {
 public:
-    void init() override {
+    void init() override
+    {
         setDisplayFPS(true);
         LE3GameBase::init();
     }
-private:
+    void registerBindings() override { registerDualArmBindings(); }
 };
 
-int main() {
-    LE3Application app(std::make_unique<SDABFC_Visualization>());
+int main()
+{
+    le3::LE3Application app(std::make_unique<Visualization>());
     app.run();
-    return 0;
 }

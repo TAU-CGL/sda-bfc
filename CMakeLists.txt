@@ -56,31 +56,44 @@ else() # MSVC
 endif()
 
 ########################################
+# dabfc: standalone library (no LightEngine3)
+########################################
 
-include_directories(${CMAKE_SOURCE_DIR}/include)
-add_executable(viz 
-    src/main.cpp
+find_package(CGAL REQUIRED)
+find_package(fcl REQUIRED)
+add_library(dabfc STATIC
     src/dabfc/sdf.cpp
+    src/dabfc/collision.cpp
+    src/dabfc/robot_arm.cpp
+    src/dabfc/ur5e.cpp
+    src/dabfc/dual_arm_simulator.cpp
 )
-target_link_libraries(viz PRIVATE le3::le3 ${frameworks})
+target_include_directories(dabfc PUBLIC include)
+target_link_libraries(dabfc PUBLIC CGAL::CGAL glm::glm assimp::assimp fcl)
+target_compile_features(dabfc PUBLIC cxx_std_20)
+
+add_executable(viz
+    src/main.cpp
+    src/lua_dual_arm.cpp
+)
+target_link_libraries(viz PRIVATE dabfc le3::le3 ${frameworks})
 
 ########################################
 # Tests
 ########################################
 
-find_package(CGAL REQUIRED)
 include(FetchContent)
 FetchContent_Declare(googletest URL https://github.com/google/googletest/releases/download/v1.17.0/googletest-1.17.0.tar.gz DOWNLOAD_EXTRACT_TIMESTAMP TRUE)
 FetchContent_MakeAvailable(googletest)
 include(GoogleTest)
 enable_testing()
 
-add_executable(test_sdf tests/test_sdf.cpp src/dabfc/sdf.cpp)
-target_include_directories(test_sdf PRIVATE include)
-target_link_libraries(test_sdf PRIVATE CGAL::CGAL glm::glm assimp::assimp GTest::gtest_main)
-target_compile_features(test_sdf PRIVATE cxx_std_17)
-target_compile_definitions(test_sdf PRIVATE MESH_DIR="${CMAKE_SOURCE_DIR}/resources/ur5e/visual")
-gtest_discover_tests(test_sdf)
+foreach(test test_sdf test_dual_arm)
+    add_executable(${test} tests/${test}.cpp)
+    target_link_libraries(${test} PRIVATE dabfc GTest::gtest_main)
+    target_compile_definitions(${test} PRIVATE MESH_DIR="${CMAKE_SOURCE_DIR}/resources/ur5e/visual")
+    gtest_discover_tests(${test})
+endforeach()
 
 ########################################
 # Benchmarks (always optimized)
@@ -93,6 +106,16 @@ find_package(OpenMP REQUIRED)
 add_executable(bench_sdf src/benchmarks/bench_sdf.cpp src/dabfc/sdf.cpp)
 target_include_directories(bench_sdf PRIVATE include)
 target_link_libraries(bench_sdf PRIVATE CGAL::CGAL glm::glm assimp::assimp OpenMP::OpenMP_CXX)
-target_compile_features(bench_sdf PRIVATE cxx_std_17)
+target_compile_features(bench_sdf PRIVATE cxx_std_20)
 target_compile_options(bench_sdf PRIVATE -O2)
 target_compile_definitions(bench_sdf PRIVATE NDEBUG CGAL_NDEBUG MESH_DIR="${CMAKE_SOURCE_DIR}/resources/ur5e/visual")
+
+########################################
+# Formatting: cmake --build build --target format
+########################################
+
+find_program(CLANG_FORMAT clang-format)
+if(CLANG_FORMAT)
+    file(GLOB_RECURSE FORMAT_SOURCES CONFIGURE_DEPENDS include/*.h src/*.cpp tests/*.cpp)
+    add_custom_target(format COMMAND ${CLANG_FORMAT} -i ${FORMAT_SOURCES})
+endif()

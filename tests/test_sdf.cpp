@@ -23,20 +23,18 @@ TEST(SdfMeshTest, UnitCube)
                            "v 0 0 1\nv 1 0 1\nv 1 1 1\nv 0 1 1\n"
                            "f 1 4 3 2\nf 5 6 7 8\nf 1 2 6 5\n"
                            "f 2 3 7 6\nf 3 4 8 7\nf 4 1 5 8\n";
-    SdfMesh sdf;
-    sdf.build(path.string());
-    EXPECT_NEAR(sdf.value_at({0.5f, 0.5f, 0.5f}), -0.5f, 1e-6);
-    EXPECT_NEAR(sdf.value_at({0.5f, 0.2f, 0.5f}), -0.2f, 1e-6);
-    EXPECT_NEAR(sdf.value_at({2, 0.5f, 0.5f}), 1, 1e-6);
-    EXPECT_NEAR(sdf.value_at({2, 2, 0.5f}), std::sqrt(2.f), 1e-6);
-    EXPECT_EQ(sdf.grad_at({0.5f, 0.2f, 0.5f}), glm::vec3(0, -1, 0));
-    EXPECT_EQ(sdf.grad_at({2, 0.5f, 0.5f}), glm::vec3(1, 0, 0));
+    const SdfMesh sdf(path.string());
+    EXPECT_NEAR(sdf.valueAt({0.5f, 0.5f, 0.5f}), -0.5f, 1e-6);
+    EXPECT_NEAR(sdf.valueAt({0.5f, 0.2f, 0.5f}), -0.2f, 1e-6);
+    EXPECT_NEAR(sdf.valueAt({2, 0.5f, 0.5f}), 1, 1e-6);
+    EXPECT_NEAR(sdf.valueAt({2, 2, 0.5f}), std::sqrt(2.f), 1e-6);
+    EXPECT_EQ(sdf.gradAt({0.5f, 0.2f, 0.5f}), glm::vec3(0, -1, 0));
+    EXPECT_EQ(sdf.gradAt({2, 0.5f, 0.5f}), glm::vec3(1, 0, 0));
 }
 
 TEST(SdfMeshTest, MissingFileThrows)
 {
-    SdfMesh sdf;
-    EXPECT_THROW(sdf.build("does_not_exist.stl"), std::runtime_error);
+    EXPECT_THROW(SdfMesh("does_not_exist.stl"), std::runtime_error);
 }
 
 // On each UR5e visual mesh: p - F(p) * grad F(p) lands on the surface, the
@@ -47,23 +45,22 @@ TEST_P(SdfMeshFileTest, Consistency)
 {
     constexpr int num_samples = 50;
     constexpr float h = 1e-4f;
-    SdfMesh sdf;
-    sdf.build(GetParam().string());
-    EXPECT_GT(sdf.value_at({10, 10, 10}), 0);
+    const SdfMesh sdf(GetParam().string());
+    EXPECT_GT(sdf.valueAt({10, 10, 10}), 0);
     std::mt19937 rng(0);
     std::uniform_real_distribution<float> uniform(-0.2f, 0.2f);
     int fd_mismatches = 0;
     for (int s = 0; s < num_samples; ++s) {
         glm::vec3 p(uniform(rng), uniform(rng), uniform(rng));
-        float value = sdf.value_at(p);
-        glm::vec3 grad = sdf.grad_at(p);
+        float value = sdf.valueAt(p);
+        glm::vec3 grad = sdf.gradAt(p);
         EXPECT_NEAR(glm::length(grad), 1, 1e-4);
-        EXPECT_NEAR(sdf.value_at(p - value * grad), 0, 1e-5);
+        EXPECT_NEAR(sdf.valueAt(p - value * grad), 0, 1e-5);
         glm::vec3 fd;
         for (int i = 0; i < 3; ++i) {
             glm::vec3 e(0);
             e[i] = h;
-            fd[i] = (sdf.value_at(p + e) - sdf.value_at(p - e)) / (2 * h);
+            fd[i] = (sdf.valueAt(p + e) - sdf.valueAt(p - e)) / (2 * h);
         }
         fd_mismatches += glm::length(fd - grad) > 0.05f; // medial axis / open-mesh sign flips
     }
