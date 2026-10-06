@@ -74,6 +74,7 @@ le3edcache.dat
 .clang-format
 .editorconfig
 .vscode/
+.claude/
 
 build/
 bin/
