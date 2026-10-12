@@ -30,14 +30,23 @@ struct Link {
 
 class RobotArm {
 public:
+    // A link of this arm touching a link of an arm (this one for a self contact) or a shape
+    struct LinkContact {
+        int link;                     // index in links()
+        std::optional<int> otherLink; // index in the other arm's links(); none for a shape
+        Eigen::Vector3d point;        // world frame
+    };
+
     RobotArm(const RobotArm&) = delete;
     RobotArm& operator=(const RobotArm&) = delete;
     RobotArm(RobotArm&&) = delete;
     RobotArm& operator=(RobotArm&&) = delete;
     virtual ~RobotArm() = default;
 
-    virtual Eigen::VectorXd home() const = 0; // a collision-free rest configuration
-    virtual int toolLink() const = 0;         // index of the tool (flange) frame in links()
+    virtual Eigen::VectorXd home() const = 0;        // a collision-free rest configuration
+    virtual Eigen::VectorXd lowerLimits() const = 0; // joint limits, one per entry of q
+    virtual Eigen::VectorXd upperLimits() const = 0;
+    virtual int toolLink() const = 0; // index of the tool (flange) frame in links()
 
     const std::vector<Link>& links() const { return m_links; }
     int dof() const { return m_dof; } // size of q
@@ -47,13 +56,13 @@ public:
     std::vector<SE3> fk(const Eigen::VectorXd& q, const SE3& base = {}) const;
     std::vector<SE3> meshPoses(const Eigen::VectorXd& q, const SE3& base = {}) const;
 
-    // Collision queries, given this arm's meshPoses() (std::invalid_argument if the size is wrong).
-    // Self-collisions exclude adjacent links and allowed pairs.
-    bool isSelfCollisionFree(const std::vector<SE3>& meshPoses) const;
-    bool touches(const std::vector<SE3>& meshPoses, const collision::Shape& shape,
-                 const SE3& pose) const;
-    bool touches(const std::vector<SE3>& meshPoses, const RobotArm& other,
-                 const std::vector<SE3>& otherMeshPoses) const;
+    // Contacts at this arm's meshPoses() (std::invalid_argument if the size is wrong); empty means
+    // collision free. Self contacts exclude adjacent links and allowed pairs.
+    std::vector<LinkContact> selfContacts(const std::vector<SE3>& meshPoses) const;
+    std::vector<LinkContact> contacts(const std::vector<SE3>& meshPoses,
+                                      const collision::Shape& shape, const SE3& pose) const;
+    std::vector<LinkContact> contacts(const std::vector<SE3>& meshPoses, const RobotArm& other,
+                                      const std::vector<SE3>& otherMeshPoses) const;
 
 protected:
     // Loads each link's parts from <meshDir>/<mesh>_<part>.stl; adjacent links may always touch
@@ -62,7 +71,8 @@ protected:
 
 private:
     void expectMeshPoses(const std::vector<SE3>& meshPoses) const;
-    bool touching(int i, int j, const std::vector<SE3>& meshPoses) const;
+    std::optional<Eigen::Vector3d> contact(int link, const SE3& meshPose,
+                                           const collision::Shape& shape, const SE3& pose) const;
 
     std::vector<Link> m_links;
     int m_dof;

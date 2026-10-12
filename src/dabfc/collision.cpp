@@ -19,11 +19,15 @@ template <class T> std::istream& readBytes(std::istream& in, T& value)
 
 } // namespace
 
-bool touches(const Shape& a, const SE3& poseA, const Shape& b, const SE3& poseB)
+std::optional<Eigen::Vector3d> contact(const Shape& a, const SE3& poseA, const Shape& b,
+                                       const SE3& poseB)
 {
-    const fcl::CollisionRequestd request; // stops at the first contact
+    fcl::CollisionRequestd request; // stops at the first contact
+    request.enable_contact = true;
     fcl::CollisionResultd result;
-    return fcl::collide(&a, poseA.isometry(), &b, poseB.isometry(), request, result) > 0;
+    if (fcl::collide(&a, poseA.isometry(), &b, poseB.isometry(), request, result) == 0)
+        return std::nullopt;
+    return result.getContact(0).pos;
 }
 
 std::unique_ptr<Mesh> loadStl(const std::vector<std::string>& paths)

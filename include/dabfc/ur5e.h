@@ -16,6 +16,8 @@ public:
     explicit UR5e(const std::string& meshDir);
 
     Eigen::VectorXd home() const override;
+    Eigen::VectorXd lowerLimits() const override;
+    Eigen::VectorXd upperLimits() const override;
     int toolLink() const override; // tool0 (coincides with wrist_3_link); the gripper mounts here
 };
 

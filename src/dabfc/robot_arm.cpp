@@ -55,41 +55,53 @@ std::vector<SE3> RobotArm::meshPoses(const Eigen::VectorXd& q, const SE3& base) 
     return poses;
 }
 
-bool RobotArm::isSelfCollisionFree(const std::vector<SE3>& meshPoses) const
+std::vector<RobotArm::LinkContact> RobotArm::selfContacts(const std::vector<SE3>& meshPoses) const
 {
     expectMeshPoses(meshPoses);
+    std::vector<LinkContact> contacts;
+    for (int i = 0; i < std::ssize(m_links); ++i) {
+        if (!m_geometry[i]) continue;
+        for (int j = i + 1; j < std::ssize(m_links); ++j) {
+            if (m_allowed.contains({i, j})) continue;
+            if (const auto point = contact(j, meshPoses[j], *m_geometry[i], meshPoses[i]))
+                contacts.push_back({.link = i, .otherLink = j, .point = *point});
+        }
+    }
+    return contacts;
+}
+
+std::vector<RobotArm::LinkContact> RobotArm::contacts(const std::vector<SE3>& meshPoses,
+                                                      const collision::Shape& shape,
+                                                      const SE3& pose) const
+{
+    expectMeshPoses(meshPoses);
+    std::vector<LinkContact> contacts;
     for (int i = 0; i < std::ssize(m_links); ++i)
-        for (int j = i + 1; j < std::ssize(m_links); ++j)
-            if (!m_allowed.contains({i, j}) && touching(i, j, meshPoses)) return false;
-    return true;
+        if (const auto point = contact(i, meshPoses[i], shape, pose))
+            contacts.push_back({.link = i, .point = *point});
+    return contacts;
+}
+
+std::vector<RobotArm::LinkContact> RobotArm::contacts(const std::vector<SE3>& meshPoses,
+                                                      const RobotArm& other,
+                                                      const std::vector<SE3>& otherMeshPoses) const
+{
+    expectMeshPoses(meshPoses);
+    other.expectMeshPoses(otherMeshPoses);
+    std::vector<LinkContact> contacts;
+    for (int i = 0; i < std::ssize(m_links); ++i) {
+        if (!m_geometry[i]) continue;
+        for (int j = 0; j < std::ssize(other.m_links); ++j)
+            if (const auto point =
+                    other.contact(j, otherMeshPoses[j], *m_geometry[i], meshPoses[i]))
+                contacts.push_back({.link = i, .otherLink = j, .point = *point});
+    }
+    return contacts;
 }
 
 void RobotArm::allowSelfCollisions(const Eigen::VectorXd& q)
 {
-    const std::vector<SE3> poses = meshPoses(q);
-    for (int i = 0; i < std::ssize(m_links); ++i)
-        for (int j = i + 1; j < std::ssize(m_links); ++j)
-            if (touching(i, j, poses)) m_allowed.emplace(i, j);
-}
-
-bool RobotArm::touches(const std::vector<SE3>& meshPoses, const collision::Shape& shape,
-                       const SE3& pose) const
-{
-    expectMeshPoses(meshPoses);
-    for (int i = 0; i < std::ssize(m_links); ++i)
-        if (m_geometry[i] && collision::touches(*m_geometry[i], meshPoses[i], shape, pose))
-            return true;
-    return false;
-}
-
-bool RobotArm::touches(const std::vector<SE3>& meshPoses, const RobotArm& other,
-                       const std::vector<SE3>& otherMeshPoses) const
-{
-    expectMeshPoses(meshPoses);
-    for (int i = 0; i < std::ssize(m_links); ++i)
-        if (m_geometry[i] && other.touches(otherMeshPoses, *m_geometry[i], meshPoses[i]))
-            return true;
-    return false;
+    for (const LinkContact& c : selfContacts(meshPoses(q))) m_allowed.emplace(c.link, *c.otherLink);
 }
 
 void RobotArm::expectMeshPoses(const std::vector<SE3>& meshPoses) const
@@ -98,10 +110,12 @@ void RobotArm::expectMeshPoses(const std::vector<SE3>& meshPoses) const
         throw std::invalid_argument("RobotArm: expected one mesh pose per link");
 }
 
-bool RobotArm::touching(int i, int j, const std::vector<SE3>& meshPoses) const
+std::optional<Eigen::Vector3d> RobotArm::contact(int link, const SE3& meshPose,
+                                                 const collision::Shape& shape,
+                                                 const SE3& pose) const
 {
-    return m_geometry[i] && m_geometry[j] &&
-           collision::touches(*m_geometry[i], meshPoses[i], *m_geometry[j], meshPoses[j]);
+    if (!m_geometry[link]) return std::nullopt;
+    return collision::contact(*m_geometry[link], meshPose, shape, pose);
 }
 
 } // namespace dabfc

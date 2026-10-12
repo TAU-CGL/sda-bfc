@@ -1,5 +1,7 @@
 #include "dabfc/ur5e.h"
 
+#include <initializer_list>
+#include <iterator>
 #include <numbers>
 #include <vector>
 
@@ -12,11 +14,14 @@ constexpr int tool0 = 7;              // index of tool0 in the chain
 constexpr int gripperJoint = 6;       // index of finger_joint in q
 constexpr double gripperClosed = 0.8; // finger_joint upper limit
 
+Eigen::VectorXd joints(std::initializer_list<double> values)
+{
+    return Eigen::Map<const Eigen::VectorXd>(values.begin(), std::ssize(values));
+}
+
 Eigen::VectorXd homeConfiguration()
 {
-    Eigen::VectorXd q(7);
-    q << 0, -pi / 2, 0, -pi / 2, 0, 0, 0;
-    return q;
+    return joints({0, -pi / 2, 0, -pi / 2, 0, 0, 0});
 }
 
 // Kinematic tree from ur5e.urdf and robotiq_arg2f_85_model.urdf; SE3(xyz, rpy) is a URDF <origin>.
@@ -65,6 +70,16 @@ UR5e::UR5e(const std::string& meshDir) : RobotArm(ur5eLinks(), meshDir)
 Eigen::VectorXd UR5e::home() const
 {
     return homeConfiguration();
+}
+
+Eigen::VectorXd UR5e::lowerLimits() const // ur5e.urdf joint limits; the gripper is open at 0
+{
+    return joints({-2 * pi, -2 * pi, -pi, -2 * pi, -2 * pi, -2 * pi, 0});
+}
+
+Eigen::VectorXd UR5e::upperLimits() const
+{
+    return joints({2 * pi, 2 * pi, pi, 2 * pi, 2 * pi, 2 * pi, gripperClosed});
 }
 
 int UR5e::toolLink() const
