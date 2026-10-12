@@ -2,9 +2,13 @@
 -- Dragging moves an arm live. On release, if the arms are in collision (self-collision, each other, an obstacle), it
 -- bisects between that arm's last collision-free configuration and the released one and settles on the configuration
 -- where the links just touch (to about 0.1 deg). Collision checks are exact and immediate (DualArm, C++).
+-- "Find contacts" gives arm 2 a random base and runs the C++ ContactSearch at a real-life joint speed, printing every
+-- contact configuration it finds.
 ArmsController = LE3ScriptObject:new()
 ArmsController.arms = {"r1", "r2"} -- names of the UR5e script objects in the scene
 ArmsController.obstacles = {"floor"} -- scene boxes (BoxExtent {1,1,1}, sized by their scale) that the arms must not touch
+ArmsController.contacts = 50 -- contact configurations to find
+ArmsController.speed = 0.5 -- rad/s: the largest joint speed while searching
 
 local DEG = 180 / math.pi
 local SLIDERS = { -- label, min, max (degrees for joints, radians for the gripper)
@@ -63,6 +67,25 @@ function ArmsController:update(deltaTime)
             end
         end
         ImGui.Separator()
+    end
+    if ImGui.Button("Find contacts (new random base)") then
+        self.seed = (self.seed or 0) + 1
+        DualArm.randomize_base(self.seed)
+        DualArm.contact_search(self.contacts, self.seed)
+        self.found, self.paused = 0, false
+    end
+    if self.found then
+        ImGui.SameLine()
+        self.paused = ImGui.Checkbox("Pause", self.paused)
+        if not self.paused then DualArm.step(self.speed * deltaTime) end
+        local contacts = DualArm.contacts()
+        for k = self.found + 1, #contacts do
+            local c = contacts[k]
+            print(string.format("contact %d: %s - %s at (%.3f, %.3f, %.3f) q1 = {%s} q2 = {%s}", k, c.link1, c.link2,
+                                c.point[1], c.point[2], c.point[3], table.concat(c.q1, ", "), table.concat(c.q2, ", ")))
+        end
+        self.found = #contacts
+        ImGui.Text(string.format("%d / %d contacts: %s", #contacts, self.contacts, DualArm.search_status()))
     end
     ImGui.End()
 end

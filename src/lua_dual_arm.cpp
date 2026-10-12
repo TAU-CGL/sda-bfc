@@ -3,12 +3,15 @@
 #include <map>
 #include <memory>
 #include <numbers>
+#include <optional>
+#include <random>
 #include <string>
 #include <vector>
 
 #include <le3/le3.h>
 #include <scripting/le3_script_bindings.h>
 
+#include "dabfc/contact_search.h"
 #include "dabfc/dual_arm_simulator.h"
 #include "dabfc/ur5e.h"
 
@@ -32,6 +35,12 @@ std::map<std::string, int>& attachedArms() // UR5e script object name -> arm ind
 {
     static std::map<std::string, int> arms;
     return arms;
+}
+
+std::optional<ContactSearch>& search()
+{
+    static std::optional<ContactSearch> search;
+    return search;
 }
 
 int armIndex(lua_State* L, int idx)
@@ -147,7 +156,7 @@ FEND()
 // (i, {q1, ..., qn})
 FBIND(DualArm, set_joints)
     const int i = armIndex(L, idx++);
-    DualArmSimulator::State q = sim().state();
+    State q = sim().state();
     q[i] = jointsFrom(L, idx++, i);
     sim().setState(q);
 FEND()
@@ -172,8 +181,66 @@ FBIND(DualArm, is_collision_free)
     PUSH_BOOL(free)
 FEND()
 
+// (seed): arm 2 gets a random base near arm 1 (DualArmSimulator::randomBase2) that leaves the
+// current state collision free
+FBIND(DualArm, randomize_base)
+    GET_NUMBER(seed)
+    std::mt19937 rng(static_cast<unsigned>(seed));
+    for (int tries = 0; tries < 100; ++tries) {
+        sim().setBase(1, sim().randomBase2(rng));
+        if (sim().isCollisionFreeNow()) break;
+    }
+FEND()
+
+// (contacts, seed): homes both arms and starts a ContactSearch for that many contacts
+FBIND(DualArm, contact_search)
+    GET_NUMBER(contacts)
+    GET_NUMBER(seed)
+    search().emplace(sim(), static_cast<int>(contacts), static_cast<unsigned>(seed));
+FEND()
+
+// (distance) -> bool: advances the contact search by at most distance rad (the largest joint
+// change); false when there is no search or it is over
+FBIND(DualArm, step)
+    GET_NUMBER(distance)
+    PUSH_BOOL(search() && search()->step(distance))
+FEND()
+
+// () -> string: what the contact search is doing ("" without one)
+FBIND(DualArm, search_status)
+    lua_pushstring(L, search() ? search()->status().c_str() : "");
+    rcount = 1;
+FEND()
+
+// () -> {{q1 = {...}, q2 = {...}, link1 = , link2 = , point = {x, y, z}}, ...}: the contacts found
+// between the arms (link names, world point); the same q may appear with several link pairs
+FBIND(DualArm, contacts)
+    lua_newtable(L);
+    int n = 0;
+    if (search())
+        for (const SimulationCollisionReport& report : search()->contacts())
+            for (const SimulationCollisionReport::Contact& c : report.contacts) {
+                if (!c.otherArm || *c.otherArm == c.arm) continue;
+                const int link1 = c.arm == 0 ? c.link : c.otherLink;
+                const int link2 = c.arm == 0 ? c.otherLink : c.link;
+                lua_newtable(L);
+                pushNumbers(L, {report.q[0].begin(), report.q[0].end()});
+                lua_setfield(L, -2, "q1");
+                pushNumbers(L, {report.q[1].begin(), report.q[1].end()});
+                lua_setfield(L, -2, "q2");
+                lua_pushstring(L, sim().arm(0)->links()[link1].name.c_str());
+                lua_setfield(L, -2, "link1");
+                lua_pushstring(L, sim().arm(1)->links()[link2].name.c_str());
+                lua_setfield(L, -2, "link2");
+                pushNumbers(L, {c.point.x(), c.point.y(), c.point.z()});
+                lua_setfield(L, -2, "point");
+                lua_rawseti(L, -2, ++n);
+            }
+    rcount = 1;
+FEND()
+
 LIB(DualArm, attach, links, mesh_poses, tool_pose, get_joints, set_joints, add_box,
-    is_collision_free)
+    is_collision_free, randomize_base, contact_search, step, search_status, contacts)
 
 void registerDualArmBindings()
 {
