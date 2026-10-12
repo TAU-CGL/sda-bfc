@@ -42,9 +42,9 @@ int main(int argc, char** argv)
 
     const auto start = std::chrono::steady_clock::now();
     ContactSearch search(sim, count, seed);
-    int reachedArm2 = 0; // cycles in which arm 1 got to its random configuration
+    int reachedSweep = 0; // cycles in which both arms got to their random configurations
     while (search.step(std::numeric_limits<double>::infinity()) && search.cycles() <= maxCycles)
-        reachedArm2 += search.status().starts_with("arm 2 to");
+        reachedSweep += search.status() == "arm 1 turning its base";
     const double seconds =
         std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
 
@@ -61,6 +61,6 @@ int main(int argc, char** argv)
                         ur5e->links()[c.otherLink].name.c_str(), c.point.x(), c.point.y(),
                         c.point.z());
         }
-    std::fprintf(stderr, "%zu contacts in %d cycles (%d reached arm 2's move), %.2f s\n",
-                 search.contacts().size(), search.cycles(), reachedArm2, seconds);
+    std::fprintf(stderr, "%zu contacts in %d cycles (%d reached the sweep), %.2f s\n",
+                 search.contacts().size(), search.cycles(), reachedSweep, seconds);
 }

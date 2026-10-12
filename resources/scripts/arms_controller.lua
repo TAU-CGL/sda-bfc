@@ -8,7 +8,7 @@ ArmsController = LE3ScriptObject:new()
 ArmsController.arms = {"r1", "r2"} -- names of the UR5e script objects in the scene
 ArmsController.obstacles = {"floor"} -- scene boxes (BoxExtent {1,1,1}, sized by their scale) that the arms must not touch
 ArmsController.contacts = 50 -- contact configurations to find
-ArmsController.speed = 0.5 -- rad/s: the largest joint speed while searching
+ArmsController.speed = 5 -- rad/s: the largest joint speed while searching (20x real life, to inspect the motion model)
 
 local DEG = 180 / math.pi
 local SLIDERS = { -- label, min, max (degrees for joints, radians for the gripper)

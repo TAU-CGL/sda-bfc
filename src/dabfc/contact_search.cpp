@@ -9,6 +9,8 @@ namespace dabfc {
 
 namespace {
 
+constexpr int candidates = 8; // upright draws per random configuration; the farthest-reaching wins
+
 // Every link frame at or above the base plane: nothing hangs below the robot's mounting
 bool upright(const RobotArm& arm, const Eigen::VectorXd& q)
 {
@@ -52,8 +54,8 @@ std::string ContactSearch::status() const
 {
     if (std::ssize(m_contacts) >= m_contactCount) return "done";
     if (!m_forward.empty()) {
-        const char* const moves[] = {"arm 1 turning its base", "arm 2 to a random configuration",
-                                     "arm 1 to a random configuration"};
+        const char* const moves[] = {"arm 1 turning its base", "arm 1 to a random configuration",
+                                     "arm 2 to a random configuration"};
         return moves[m_forward.size() - 1];
     }
     if (!m_back.empty()) return "arm " + std::to_string(m_back.back().arm + 1) + " going home";
@@ -64,26 +66,38 @@ void ContactSearch::plan()
 {
     ++m_cycles;
     const State& q = m_sim.state();
-    const Eigen::VectorXd q1 = randomConfiguration(0);
+    const Eigen::VectorXd q1 = randomConfiguration(0, q[0]);
     Eigen::VectorXd turned = q1; // a full turn of the base joint, staying within its range
     turned[0] -= std::copysign(2 * std::numbers::pi, q1[0]);
     m_forward = {{.arm = 0, .from = q1, .to = turned},
-                 {.arm = 1, .from = q[1], .to = randomConfiguration(1)},
-                 {.arm = 0, .from = q[0], .to = q1}};
+                 {.arm = 0, .from = q[0], .to = q1},
+                 {.arm = 1, .from = q[1], .to = randomConfiguration(1, q[1])}};
 }
 
-Eigen::VectorXd ContactSearch::randomConfiguration(int arm)
+// The farthest-reaching of a few upright draws. Each joint lands within half a turn of where it
+// is, so the straight joint-space path there is the short arc for every revolute joint (the
+// geodesic on the torus); the gripper's range is narrower
+Eigen::VectorXd ContactSearch::randomConfiguration(int arm, const Eigen::VectorXd& from)
 {
     const std::shared_ptr<const RobotArm> model = m_sim.arm(arm);
-    const Eigen::VectorXd lower = model->lowerLimits();
-    const Eigen::VectorXd upper = model->upperLimits();
+    const Eigen::ArrayXd halfTurn = Eigen::ArrayXd::Constant(from.size(), std::numbers::pi);
+    const Eigen::ArrayXd lower = model->lowerLimits().array().max(from.array() - halfTurn);
+    const Eigen::ArrayXd upper = model->upperLimits().array().min(from.array() + halfTurn);
+    Eigen::VectorXd best = from;
+    double bestReach = -1;
     Eigen::VectorXd q(lower.size());
-    for (int tries = 0; tries < 1000; ++tries) {
+    for (int tries = 0, kept = 0; tries < 1000 && kept < candidates; ++tries) {
         for (int k = 0; k < q.size(); ++k)
             q[k] = std::uniform_real_distribution<double>(lower[k], upper[k])(m_rng);
-        if (upright(*model, q)) break;
+        if (!upright(*model, q)) continue;
+        ++kept;
+        const double reach = model->fk(q)[model->toolLink()].translation().norm();
+        if (reach > bestReach) {
+            bestReach = reach;
+            best = q;
+        }
     }
-    return q;
+    return best;
 }
 
 } // namespace dabfc

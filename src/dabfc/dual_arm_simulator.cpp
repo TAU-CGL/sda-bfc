@@ -10,8 +10,8 @@ namespace dabfc {
 namespace {
 
 constexpr double pi = std::numbers::pi;
-constexpr double maxBaseXY = 1.5;            // m
-constexpr double maxBaseZ = 0.3;             // m
+constexpr double maxBaseXY = 0.75;           // m
+constexpr double maxBaseZ = 0.15;            // m
 constexpr double maxBaseTilt = 3 * pi / 180; // rad
 
 std::shared_ptr<const RobotArm> notNull(std::shared_ptr<const RobotArm> arm)

@@ -12,11 +12,11 @@
 
 namespace dabfc {
 
-// Finds configurations where the two arms touch. Each cycle: arm 1 moves to a random upright
-// configuration (no link below its base), then arm 2, then arm 1 turns its base joint a full
-// circle; after a contact, or
-// after the turn, the moves are retraced in reverse order, back home along the collision-free
-// segments just travelled. Contacts between the arms are kept; a self-contact only ends the cycle
+// Finds configurations where the two arms touch. Each cycle: arm 2 moves to a random upright
+// (no link below its base), far-reaching configuration along the shortest joint-space path, then
+// arm 1 does the same and turns its base joint a full circle; after a contact, or after the turn, the moves are
+// retraced in reverse order, back home along the collision-free segments just travelled.
+// Contacts between the arms are kept; a self-contact only ends the cycle
 class ContactSearch : public Motion {
 public:
     ContactSearch(DualArmSimulator& sim, int contactCount, unsigned seed); // homes both arms
@@ -34,7 +34,7 @@ private:
     };
 
     void plan(); // a new cycle
-    Eigen::VectorXd randomConfiguration(int arm);
+    Eigen::VectorXd randomConfiguration(int arm, const Eigen::VectorXd& from); // reached by the short arcs
 
     DualArmSimulator& m_sim;
     int m_contactCount;

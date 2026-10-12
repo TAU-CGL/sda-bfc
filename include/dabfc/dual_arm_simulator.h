@@ -44,7 +44,7 @@ public:
 
     void addObstacle(std::shared_ptr<const collision::Shape> shape, const SE3& pose);
 
-    // A random base for arm 2 near arm 1's, in its frame: x and y within 1.5 m, z within 0.3 m,
+    // A random base for arm 2 near arm 1's, in its frame: x and y within 0.75 m, z within 0.15 m,
     // any yaw, tilted by at most 3 degrees
     SE3 randomBase2(std::mt19937& rng) const;
 
