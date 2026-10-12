@@ -61,6 +61,10 @@ endif()
 
 find_package(CGAL REQUIRED)
 find_package(fcl REQUIRED)
+if(APPLE)
+    list(APPEND CMAKE_PREFIX_PATH /opt/homebrew/opt/libomp) # brew install libomp
+endif()
+find_package(OpenMP REQUIRED)
 set(DABFC_SOURCES
     src/dabfc/sdf.cpp
     src/dabfc/collision.cpp
@@ -68,10 +72,11 @@ set(DABFC_SOURCES
     src/dabfc/ur5e.cpp
     src/dabfc/dual_arm_simulator.cpp
     src/dabfc/contact_search.cpp
+    src/dabfc/contact_solver.cpp
 )
 add_library(dabfc STATIC ${DABFC_SOURCES})
 target_include_directories(dabfc PUBLIC include)
-target_link_libraries(dabfc PUBLIC CGAL::CGAL glm::glm assimp::assimp fcl)
+target_link_libraries(dabfc PUBLIC CGAL::CGAL glm::glm assimp::assimp fcl OpenMP::OpenMP_CXX)
 target_compile_features(dabfc PUBLIC cxx_std_20)
 
 add_executable(viz
@@ -87,11 +92,12 @@ target_link_libraries(viz PRIVATE dabfc le3::le3 ${frameworks})
 
 include(FetchContent)
 FetchContent_Declare(googletest URL https://github.com/google/googletest/releases/download/v1.17.0/googletest-1.17.0.tar.gz DOWNLOAD_EXTRACT_TIMESTAMP TRUE)
-FetchContent_MakeAvailable(googletest)
+FetchContent_Declare(json URL https://github.com/nlohmann/json/releases/download/v3.11.3/json.tar.xz DOWNLOAD_EXTRACT_TIMESTAMP TRUE)
+FetchContent_MakeAvailable(googletest json)
 include(GoogleTest)
 enable_testing()
 
-foreach(test test_sdf test_dual_arm)
+foreach(test test_sdf test_dual_arm test_contact_solver)
     add_executable(${test} tests/${test}.cpp)
     target_link_libraries(${test} PRIVATE dabfc GTest::gtest_main)
     target_compile_definitions(${test} PRIVATE MESH_DIR="${CMAKE_SOURCE_DIR}/resources/ur5e/visual")
@@ -102,10 +108,6 @@ endforeach()
 # Benchmarks (always optimized)
 ########################################
 
-if(APPLE)
-    list(APPEND CMAKE_PREFIX_PATH /opt/homebrew/opt/libomp) # brew install libomp
-endif()
-find_package(OpenMP REQUIRED)
 add_executable(bench_sdf src/benchmarks/bench_sdf.cpp src/dabfc/sdf.cpp)
 target_include_directories(bench_sdf PRIVATE include)
 target_link_libraries(bench_sdf PRIVATE CGAL::CGAL glm::glm assimp::assimp OpenMP::OpenMP_CXX)
@@ -113,12 +115,12 @@ target_compile_features(bench_sdf PRIVATE cxx_std_20)
 target_compile_options(bench_sdf PRIVATE -O2)
 target_compile_definitions(bench_sdf PRIVATE NDEBUG CGAL_NDEBUG MESH_DIR="${CMAKE_SOURCE_DIR}/resources/ur5e/visual")
 
-# The contact search and its benchmark compile dabfc in with -O2, so they are fast in a Debug build too
-foreach(tool src/tools/find_contacts.cpp src/tools/make_benchmark.cpp src/benchmarks/bench_collision.cpp)
+# The tools and benchmarks compile dabfc in with -O2, so they are fast in a Debug build too
+foreach(tool src/tools/find_contacts.cpp src/tools/make_benchmark.cpp src/benchmarks/bench_collision.cpp src/benchmarks/bench_solver.cpp)
     get_filename_component(name ${tool} NAME_WE)
     add_executable(${name} ${tool} ${DABFC_SOURCES})
     target_include_directories(${name} PRIVATE include)
-    target_link_libraries(${name} PRIVATE CGAL::CGAL glm::glm assimp::assimp fcl)
+    target_link_libraries(${name} PRIVATE CGAL::CGAL glm::glm assimp::assimp fcl OpenMP::OpenMP_CXX nlohmann_json::nlohmann_json)
     target_compile_features(${name} PRIVATE cxx_std_20)
     target_compile_options(${name} PRIVATE -O2)
     target_compile_definitions(${name} PRIVATE NDEBUG CGAL_NDEBUG MESH_DIR="${CMAKE_SOURCE_DIR}/resources/ur5e/visual" PROJECT_DIR="${CMAKE_SOURCE_DIR}")
