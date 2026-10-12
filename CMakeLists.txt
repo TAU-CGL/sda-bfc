@@ -61,13 +61,15 @@ endif()
 
 find_package(CGAL REQUIRED)
 find_package(fcl REQUIRED)
-add_library(dabfc STATIC
+set(DABFC_SOURCES
     src/dabfc/sdf.cpp
     src/dabfc/collision.cpp
     src/dabfc/robot_arm.cpp
     src/dabfc/ur5e.cpp
     src/dabfc/dual_arm_simulator.cpp
+    src/dabfc/contact_search.cpp
 )
+add_library(dabfc STATIC ${DABFC_SOURCES})
 target_include_directories(dabfc PUBLIC include)
 target_link_libraries(dabfc PUBLIC CGAL::CGAL glm::glm assimp::assimp fcl)
 target_compile_features(dabfc PUBLIC cxx_std_20)
@@ -77,6 +79,7 @@ add_executable(viz
     src/lua_dual_arm.cpp
 )
 target_link_libraries(viz PRIVATE dabfc le3::le3 ${frameworks})
+
 
 ########################################
 # Tests
@@ -109,6 +112,17 @@ target_link_libraries(bench_sdf PRIVATE CGAL::CGAL glm::glm assimp::assimp OpenM
 target_compile_features(bench_sdf PRIVATE cxx_std_20)
 target_compile_options(bench_sdf PRIVATE -O2)
 target_compile_definitions(bench_sdf PRIVATE NDEBUG CGAL_NDEBUG MESH_DIR="${CMAKE_SOURCE_DIR}/resources/ur5e/visual")
+
+# The contact search and its benchmark compile dabfc in with -O2, so they are fast in a Debug build too
+foreach(tool src/tools/find_contacts.cpp src/benchmarks/bench_collision.cpp)
+    get_filename_component(name ${tool} NAME_WE)
+    add_executable(${name} ${tool} ${DABFC_SOURCES})
+    target_include_directories(${name} PRIVATE include)
+    target_link_libraries(${name} PRIVATE CGAL::CGAL glm::glm assimp::assimp fcl)
+    target_compile_features(${name} PRIVATE cxx_std_20)
+    target_compile_options(${name} PRIVATE -O2)
+    target_compile_definitions(${name} PRIVATE NDEBUG CGAL_NDEBUG MESH_DIR="${CMAKE_SOURCE_DIR}/resources/ur5e/visual")
+endforeach()
 
 ########################################
 # Formatting: cmake --build build --target format
