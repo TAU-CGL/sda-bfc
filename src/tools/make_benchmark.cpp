@@ -1,5 +1,5 @@
 // Writes a benchmark of contact configurations: several random placements of arm 2 near arm 1
-// (DualArmSimulator::randomBase2), each with the arm 2 base transform and the contact
+// (DualArmSimulator::randomPlacementOfArm2), each with the pose of arm 2's base in arm 1's frame and the contact
 // configurations a ContactSearch finds there (joint values of both arms and the touching link
 // pairs with their world contact point), as JSON.
 // Usage: make_benchmark [placements = 10] [contacts = 50] [seed = 0] [cycles = 1000] [out = benchmark/contacts.json]
@@ -39,7 +39,7 @@ void writePlacement(std::FILE* f, const DualArmSimulator& sim, const ContactSear
     const Eigen::Vector3d p = sim.base(1).translation();
     const Eigen::Quaterniond r = sim.base(1).rotation();
     std::fprintf(f, "    {\n      \"seed\": %u,\n      \"cycles\": %d,\n", seed, search.cycles());
-    std::fprintf(f, "      \"base2\": {\"translation\": [%.6f, %.6f, %.6f], \"quaternion_wxyz\": "
+    std::fprintf(f, "      \"arm2_base_in_arm1_frame\": {\"translation\": [%.6f, %.6f, %.6f], \"quaternion_wxyz\": "
                     "[%.6f, %.6f, %.6f, %.6f]},\n",
                  p.x(), p.y(), p.z(), r.w(), r.x(), r.y(), r.z());
     std::fprintf(f, "      \"contacts\": [");
@@ -90,7 +90,7 @@ int main(int argc, char** argv)
         DualArmSimulator sim(ur5e, SE3{}, ur5e, SE3{});
         std::mt19937 rng(seed);
         for (int tries = 0; tries < 100; ++tries) {
-            sim.setBase(1, sim.randomBase2(rng));
+            sim.setBase(1, sim.randomPlacementOfArm2(rng));
             if (sim.isCollisionFreeNow()) break;
         }
         ContactSearch search(sim, s.contacts, seed);

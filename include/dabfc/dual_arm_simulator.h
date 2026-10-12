@@ -44,9 +44,9 @@ public:
 
     void addObstacle(std::shared_ptr<const collision::Shape> shape, const SE3& pose);
 
-    // A random base for arm 2 near arm 1's, in its frame: x and y within 0.75 m, z within 0.15 m,
+    // A random pose for arm 2's base near arm 1's, in its frame: x and y within 0.75 m, z within 0.15 m,
     // any yaw, tilted by at most 3 degrees
-    SE3 randomBase2(std::mt19937& rng) const;
+    SE3 randomPlacementOfArm2(std::mt19937& rng) const;
 
     // Everything touching at q (empty: collision free). Throws std::invalid_argument if the size
     // of a q[i] is not arm(i)->dof()

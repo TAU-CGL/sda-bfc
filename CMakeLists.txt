@@ -110,7 +110,7 @@ endforeach()
 
 add_executable(bench_sdf src/benchmarks/bench_sdf.cpp src/dabfc/sdf.cpp)
 target_include_directories(bench_sdf PRIVATE include)
-target_link_libraries(bench_sdf PRIVATE CGAL::CGAL glm::glm assimp::assimp OpenMP::OpenMP_CXX)
+target_link_libraries(bench_sdf PRIVATE CGAL::CGAL glm::glm assimp::assimp fcl OpenMP::OpenMP_CXX)
 target_compile_features(bench_sdf PRIVATE cxx_std_20)
 target_compile_options(bench_sdf PRIVATE -O2)
 target_compile_definitions(bench_sdf PRIVATE NDEBUG CGAL_NDEBUG MESH_DIR="${CMAKE_SOURCE_DIR}/resources/ur5e/visual")

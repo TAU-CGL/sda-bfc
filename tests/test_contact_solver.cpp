@@ -24,12 +24,12 @@ std::shared_ptr<const SdfMesh> unitCube()
     return std::make_shared<SdfMesh>(path.string());
 }
 
-std::shared_ptr<const LinkShape> cubeShape(std::shared_ptr<const Sdf> sdf, const SdfMesh& mesh)
+std::shared_ptr<const Shape> cubeShape(std::shared_ptr<const Sdf> sdf, const SdfMesh& mesh)
 {
     std::mt19937 rng(0);
-    LinkShape shape{.sdf = std::move(sdf), .surface = {}};
+    Shape shape{.sdf = std::move(sdf), .surface = {}, .center = {0.5, 0.5, 0.5}, .radius = std::sqrt(3.) / 2};
     for (const glm::vec3& p : mesh.surfaceSamples(600, rng)) shape.surface.emplace_back(p.x, p.y, p.z);
-    return std::make_shared<const LinkShape>(std::move(shape));
+    return std::make_shared<const Shape>(std::move(shape));
 }
 
 TEST(SE3Test, Exp)
@@ -55,21 +55,23 @@ TEST(SdfGridTest, MatchesTheSource)
     }
 }
 
-// Unit cubes on both arms; with arm 2's base at `truth` the pairs touch face to face at the
-// planes x = 1, z = 1 and z = 1.2
+// Unit cubes on both arms; with arm 2's base at `truth` the contacts touch face to face at the
+// planes x = 1, z = 1 and z = 1.2. The first contact also lists a far-away cube on each arm,
+// both fixed, so that pair can never explain the contact
 class ContactSolverTest : public testing::Test {
 protected:
     ContactSolverTest()
     {
         const std::shared_ptr<const SdfMesh> cube = unitCube();
-        const std::shared_ptr<const LinkShape> shape = cubeShape(cube, *cube);
-        contacts = {{.shape1 = shape, .pose1 = SE3({0, 0, 0}), .shape2 = shape, .pose2 = SE3({0, 0, 0})},
-                    {.shape1 = shape, .pose1 = SE3({0, -1, 0}), .shape2 = shape, .pose2 = SE3({-0.5, -1.2, 0.8})},
-                    {.shape1 = shape, .pose1 = SE3({0, 0, 1.2}), .shape2 = shape, .pose2 = SE3({-0.6, 0, 0})}};
+        const std::shared_ptr<const Shape> shape = cubeShape(cube, *cube);
+        contacts = {{.bodies1 = {{shape, SE3({0, 0, 5}), false}, {shape, SE3({0, 0, 0})}},
+                     .bodies2 = {{shape, SE3({0, 0, 0})}, {shape, SE3({0, 0, -5}), false}}},
+                    {.bodies1 = {{shape, SE3({0, -1, 0})}}, .bodies2 = {{shape, SE3({-0.5, -1.2, 0.8})}}},
+                    {.bodies1 = {{shape, SE3({0, 0, 1.2})}}, .bodies2 = {{shape, SE3({-0.6, 0, 0})}}}};
     }
 
     const SE3 truth{{1, 0.1, 0.2}};
-    std::vector<TouchingLinks> contacts;
+    std::vector<Contact> contacts;
 };
 
 TEST_F(ContactSolverTest, JacobianMatchesFiniteDifferences)
@@ -78,11 +80,11 @@ TEST_F(ContactSolverTest, JacobianMatchesFiniteDifferences)
     const SE3 X({1.3, 0.2, -0.1}, {0.1, 0.2, 0.3});
     constexpr double h = 1e-4; // the SDF is single precision
     for (int t = 0; t < std::ssize(contacts); ++t) {
-        const ContactSolver::Residual r = solver.residual(X, t);
+        const ContactSolver::Residual r = solver.residuals(X, t).front();
         for (int k = 0; k < 6; ++k) {
             const Vector6d e = Vector6d::Unit(k) * h;
-            const double fd = (solver.residual(X * SE3::exp(e), t).value -
-                               solver.residual(X * SE3::exp(-e), t).value) /
+            const double fd = (solver.residuals(X * SE3::exp(e), t).front().value -
+                               solver.residuals(X * SE3::exp(-e), t).front().value) /
                               (2 * h);
             EXPECT_NEAR(r.jacobian[k], fd, 5e-3) << "pair " << t << " entry " << k;
         }
@@ -93,6 +95,9 @@ TEST_F(ContactSolverTest, RecoversATouchingPose)
 {
     const ContactSolver solver(contacts);
     EXPECT_LT(solver.cost(truth), 1e-10);
+    EXPECT_EQ(solver.residuals(truth, 0).size(), 1);
+    EXPECT_EQ(solver.residuals(truth, 0).front().body1, 1);
+    EXPECT_EQ(solver.residuals(truth, 0).front().body2, 0);
     const SE3 X = solver.solve(truth * SE3::exp((Vector6d() << 0.03, -0.02, 0.02, 0.02, -0.03, 0.01).finished()));
     EXPECT_LT(solver.cost(X), 1e-8);
 }

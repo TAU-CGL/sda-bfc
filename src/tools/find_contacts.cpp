@@ -1,5 +1,5 @@
 // Offline contact search between two UR5e arms, as fast as possible: arm 2 gets a random base
-// near arm 1 (DualArmSimulator::randomBase2), then a ContactSearch runs until it has found the
+// near arm 1 (DualArmSimulator::randomPlacementOfArm2), then a ContactSearch runs until it has found the
 // requested number of contact configurations, or gives up after the given number of cycles.
 // Usage: find_contacts [contacts = 50] [seed = 0] [cycles = 1000]
 #include <chrono>
@@ -33,7 +33,7 @@ int main(int argc, char** argv)
     DualArmSimulator sim(ur5e, SE3{}, ur5e, SE3{});
     std::mt19937 rng(seed);
     for (int tries = 0; tries < 100; ++tries) {
-        sim.setBase(1, sim.randomBase2(rng));
+        sim.setBase(1, sim.randomPlacementOfArm2(rng));
         if (sim.isCollisionFreeNow()) break;
     }
     const Eigen::Vector3d p = sim.base(1).translation();
@@ -48,7 +48,7 @@ int main(int argc, char** argv)
     const double seconds =
         std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
 
-    std::printf("# base2: x y z qw qx qy qz = %.6f %.6f %.6f %.6f %.6f %.6f %.6f\n", p.x(), p.y(),
+    std::printf("# arm 2 base in arm 1 frame: x y z qw qx qy qz = %.6f %.6f %.6f %.6f %.6f %.6f %.6f\n", p.x(), p.y(),
                 p.z(), r.w(), r.x(), r.y(), r.z());
     std::printf("# columns: q1[%d] q2[%d] link1 link2 x y z (world point)\n", ur5e->dof(),
                 ur5e->dof());

@@ -40,38 +40,79 @@ Nearest nearest(const Sdf& sdf, const SE3& T, const std::vector<Eigen::Vector3d>
 
 } // namespace
 
-ContactSolver::ContactSolver(std::vector<TouchingLinks> contacts) : m_contacts(std::move(contacts))
+ContactSolver::ContactSolver(std::vector<Contact> contacts) : m_contacts(std::move(contacts)) {}
+
+std::vector<ContactSolver::Residual> ContactSolver::residuals(const SE3& X, int t) const
 {
+    const Contact& c = m_contacts.at(t);
+    struct Candidate {
+        double bound; // the pair's distance is at least this: bounding spheres
+        int i;
+        int j;
+    };
+    std::vector<Candidate> candidates;
+    for (int i = 0; i < std::ssize(c.bodies1); ++i) {
+        const Eigen::Vector3d ci = c.bodies1[i].pose * c.bodies1[i].shape->center;
+        for (int j = 0; j < std::ssize(c.bodies2); ++j) {
+            const Eigen::Vector3d cj = X * (c.bodies2[j].pose * c.bodies2[j].shape->center);
+            candidates.push_back(
+                {(ci - cj).norm() - c.bodies1[i].shape->radius - c.bodies2[j].shape->radius, i, j});
+        }
+    }
+    std::ranges::sort(candidates, {}, &Candidate::bound);
+    Residual touching{std::numeric_limits<double>::infinity(), Vector6d::Zero(), -1, -1};
+    std::vector<Residual> penetrating;
+    for (const Candidate& candidate : candidates) {
+        if (candidate.bound >= std::max(touching.value, 0.)) break; // nothing closer remains
+        const Body& body1 = c.bodies1[candidate.i];
+        const Body& body2 = c.bodies2[candidate.j];
+        const bool mayTouch = body1.moves || body2.moves;
+        if (mayTouch ? candidate.bound >= touching.value : candidate.bound >= 0) continue;
+        Residual r = residual(X, body1, body2);
+        r.body1 = candidate.i;
+        r.body2 = candidate.j;
+        if (mayTouch && r.value < touching.value) touching = r;
+        if (!mayTouch && r.value < 0) penetrating.push_back(r);
+    }
+    penetrating.insert(penetrating.begin(), touching);
+    return penetrating;
 }
 
-ContactSolver::Residual ContactSolver::residual(const SE3& X, int t) const
+ContactSolver::Residual ContactSolver::residual(const SE3& X, const Body& body1,
+                                                const Body& body2) const
 {
-    const TouchingLinks& c = m_contacts.at(t);
-    const SE3 M = c.pose1.inverse() * X;           // arm 2's base in link 1's frame
-    const SE3 N = c.pose2.inverse() * X.inverse(); // arm 1's base in link 2's frame
-    const Nearest in1 = nearest(*c.shape1->sdf, M * c.pose2, c.shape2->surface);
-    const Nearest in2 = nearest(*c.shape2->sdf, N * c.pose1, c.shape1->surface);
+    const SE3 M = body1.pose.inverse() * X;           // arm 2's base in link 1's frame
+    const SE3 N = body2.pose.inverse() * X.inverse(); // arm 1's base in link 2's frame
+    const Nearest in1 = nearest(*body1.shape->sdf, M * body2.pose, body2.shape->surface);
+    const Nearest in2 = nearest(*body2.shape->sdf, N * body1.pose, body1.shape->surface);
     Vector6d jacobian;
     if (in1.distance <= in2.distance) {
-        const Eigen::Vector3d b = c.pose2 * in1.sample; // in arm 2's base frame
-        const Eigen::Vector3d g = M.rotation().inverse() * grad(*c.shape1->sdf, M * b);
+        const Eigen::Vector3d b = body2.pose * in1.sample; // in arm 2's base frame
+        const Eigen::Vector3d g = M.rotation().inverse() * grad(*body1.shape->sdf, M * b);
         jacobian << g, b.cross(g);
-        return {in1.distance, jacobian};
+        return {in1.distance, jacobian, 0, 0};
     }
-    const Eigen::Vector3d a = c.pose1 * in2.sample; // in arm 1's base frame
-    const Eigen::Vector3d u = X.inverse() * a;      // in arm 2's base frame
-    const Eigen::Vector3d h = c.pose2.rotation() * grad(*c.shape2->sdf, N * a);
+    const Eigen::Vector3d a = body1.pose * in2.sample; // in arm 1's base frame
+    const Eigen::Vector3d u = X.inverse() * a;         // in arm 2's base frame
+    const Eigen::Vector3d h = body2.pose.rotation() * grad(*body2.shape->sdf, N * a);
     jacobian << -h, -u.cross(h);
-    return {in2.distance, jacobian};
+    return {in2.distance, jacobian, 0, 0};
+}
+
+std::vector<ContactSolver::Residual> ContactSolver::residuals(const SE3& X) const
+{
+    std::vector<std::vector<Residual>> perContact(m_contacts.size());
+#pragma omp parallel for schedule(dynamic)
+    for (int t = 0; t < std::ssize(m_contacts); ++t) perContact[t] = residuals(X, t);
+    std::vector<Residual> all;
+    for (const std::vector<Residual>& rs : perContact) all.insert(all.end(), rs.begin(), rs.end());
+    return all;
 }
 
 double ContactSolver::cost(const SE3& X) const
 {
     double total = 0;
-    for (int t = 0; t < std::ssize(m_contacts); ++t) {
-        const double f = residual(X, t).value;
-        total += f * f;
-    }
+    for (const Residual& r : residuals(X)) total += r.value * r.value;
     return total;
 }
 
@@ -82,8 +123,7 @@ SE3 ContactSolver::solve(SE3 X, int maxIterations, double tolerance) const
     for (int iteration = 0; iteration < maxIterations; ++iteration) {
         Matrix6d H = Matrix6d::Zero();
         Vector6d g = Vector6d::Zero();
-        for (int t = 0; t < std::ssize(m_contacts); ++t) {
-            const Residual r = residual(X, t);
+        for (const Residual& r : residuals(X)) {
             H += r.jacobian * r.jacobian.transpose();
             g += r.jacobian * r.value;
         }

@@ -43,7 +43,7 @@ void DualArmSimulator::addObstacle(std::shared_ptr<const collision::Shape> shape
     m_obstacles.push_back({std::move(shape), pose});
 }
 
-SE3 DualArmSimulator::randomBase2(std::mt19937& rng) const
+SE3 DualArmSimulator::randomPlacementOfArm2(std::mt19937& rng) const
 {
     std::uniform_real_distribution<double> xy(-maxBaseXY, maxBaseXY);
     std::uniform_real_distribution<double> z(-maxBaseZ, maxBaseZ);

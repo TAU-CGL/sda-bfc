@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <limits>
 #include <numbers>
 #include <span>
 #include <stdexcept>
@@ -66,6 +67,13 @@ Box SdfMesh::bounds() const
     return {.min = {b.xmin(), b.ymin(), b.zmin()}, .max = {b.xmax(), b.ymax(), b.zmax()}};
 }
 
+double SdfMesh::area() const
+{
+    double total = 0;
+    for (const Triangle& t : m_triangles) total += std::sqrt(t.squared_area());
+    return total;
+}
+
 std::vector<glm::vec3> SdfMesh::surfaceSamples(int count, std::mt19937& rng) const
 {
     std::vector<double> areas(m_triangles.size());
@@ -100,6 +108,15 @@ bool SdfMesh::isInside(const Point& q) const
         solidAngle += 2 * std::atan2(CGAL::determinant(a, b, c), denominator);
     }
     return std::abs(solidAngle) > 2 * std::numbers::pi;
+}
+
+SdfGrid::SdfGrid(const Box& box, float spacing, std::vector<float> values)
+    : m_box(box), m_spacing(spacing), m_size(glm::ceil((box.max - box.min) / spacing) + 1.f),
+      m_values(std::move(values))
+{
+    m_box.max = m_box.min + glm::vec3(m_size - 1) * spacing;
+    if (std::ssize(m_values) != static_cast<std::ptrdiff_t>(m_size.x) * m_size.y * m_size.z)
+        throw std::invalid_argument("SdfGrid: wrong number of values for the box and spacing");
 }
 
 SdfGrid::SdfGrid(const Sdf& source, const Box& box, float spacing)
@@ -145,6 +162,57 @@ SdfGrid::Interpolation SdfGrid::at(glm::vec3 p) const
     }
     result.grad /= m_spacing;
     return result;
+}
+
+SdfUnion::SdfUnion(std::vector<Part> parts) : m_parts(std::move(parts))
+{
+    for (const Part& part : m_parts) {
+        m_inversePoses.push_back(part.pose.inverse());
+        m_centers.push_back(part.pose * part.center);
+    }
+}
+
+float SdfUnion::valueAt(glm::vec3 p) const
+{
+    return nearest(p).value;
+}
+
+glm::vec3 SdfUnion::gradAt(glm::vec3 p) const
+{
+    const Nearest n = nearest(p);
+    const Part& part = m_parts[n.part];
+    const glm::vec3 local = part.sdf->gradAt({static_cast<float>(n.local.x()),
+                                              static_cast<float>(n.local.y()),
+                                              static_cast<float>(n.local.z())});
+    const Eigen::Vector3d g = part.pose.rotation() * Eigen::Vector3d(local.x, local.y, local.z);
+    return {static_cast<float>(g.x()), static_cast<float>(g.y()), static_cast<float>(g.z())};
+}
+
+Box SdfUnion::bounds() const
+{
+    Box box{glm::vec3(std::numeric_limits<float>::max()), glm::vec3(std::numeric_limits<float>::lowest())};
+    for (int i = 0; i < std::ssize(m_parts); ++i) {
+        const glm::vec3 c(m_centers[i].x(), m_centers[i].y(), m_centers[i].z());
+        const float r = static_cast<float>(m_parts[i].radius);
+        box.min = glm::min(box.min, c - r);
+        box.max = glm::max(box.max, c + r);
+    }
+    return box;
+}
+
+SdfUnion::Nearest SdfUnion::nearest(glm::vec3 p) const
+{
+    const Eigen::Vector3d q(p.x, p.y, p.z);
+    Nearest best{-1, std::numeric_limits<float>::infinity(), Eigen::Vector3d::Zero()};
+    for (int i = 0; i < std::ssize(m_parts); ++i) {
+        if ((q - m_centers[i]).norm() - m_parts[i].radius >= best.value) continue;
+        const Eigen::Vector3d local = m_inversePoses[i] * q;
+        const float value = m_parts[i].sdf->valueAt({static_cast<float>(local.x()),
+                                                     static_cast<float>(local.y()),
+                                                     static_cast<float>(local.z())});
+        if (value < best.value) best = {i, value, local};
+    }
+    return best;
 }
 
 } // namespace dabfc

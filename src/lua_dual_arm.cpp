@@ -181,13 +181,13 @@ FBIND(DualArm, is_collision_free)
     PUSH_BOOL(free)
 FEND()
 
-// (seed): arm 2 gets a random base near arm 1 (DualArmSimulator::randomBase2) that leaves the
+// (seed): arm 2 gets a random base near arm 1 (DualArmSimulator::randomPlacementOfArm2) that leaves the
 // current state collision free
 FBIND(DualArm, randomize_base)
     GET_NUMBER(seed)
     std::mt19937 rng(static_cast<unsigned>(seed));
     for (int tries = 0; tries < 100; ++tries) {
-        sim().setBase(1, sim().randomBase2(rng));
+        sim().setBase(1, sim().randomPlacementOfArm2(rng));
         if (sim().isCollisionFreeNow()) break;
     }
 FEND()

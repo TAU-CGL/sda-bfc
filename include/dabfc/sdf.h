@@ -1,6 +1,7 @@
 #ifndef DABFC_SDF_H_
 #define DABFC_SDF_H_
 
+#include <memory>
 #include <random>
 #include <string>
 #include <vector>
@@ -10,6 +11,8 @@
 #include <CGAL/AABB_triangle_primitive_3.h>
 #include <CGAL/Simple_cartesian.h>
 #include <glm/glm.hpp>
+
+#include "dabfc/se3.h"
 
 namespace dabfc {
 
@@ -42,6 +45,7 @@ public:
     glm::vec3 gradAt(glm::vec3 p) const override;
 
     Box bounds() const; // of the triangles
+    double area() const;
     std::vector<glm::vec3> surfaceSamples(int count, std::mt19937& rng) const; // uniform by area
 
 private:
@@ -63,9 +67,13 @@ private:
 class SdfGrid : public Sdf {
 public:
     SdfGrid(const Sdf& source, const Box& box, float spacing);
+    SdfGrid(const Box& box, float spacing, std::vector<float> values); // e.g. read from a file
 
     float valueAt(glm::vec3 p) const override;
     glm::vec3 gradAt(glm::vec3 p) const override;
+    const Box& box() const { return m_box; }
+    float spacing() const { return m_spacing; }
+    const std::vector<float>& values() const { return m_values; } // x fastest, then y, then z
 
 private:
     struct Interpolation {
@@ -80,6 +88,37 @@ private:
     float m_spacing;
     glm::ivec3 m_size; // samples per axis
     std::vector<float> m_values;
+};
+
+// The union of several SDFs, each placed by a pose: the smallest of their values. A part is
+// skipped when the query point is farther from its bounding sphere than the best value so far
+class SdfUnion : public Sdf {
+public:
+    struct Part {
+        std::shared_ptr<const Sdf> sdf;
+        SE3 pose;             // the part's frame in the union's frame
+        Eigen::Vector3d center; // a sphere enclosing the part, in the part's frame
+        double radius;
+    };
+
+    explicit SdfUnion(std::vector<Part> parts);
+
+    float valueAt(glm::vec3 p) const override;
+    glm::vec3 gradAt(glm::vec3 p) const override;
+    Box bounds() const; // enclosing every part's sphere
+
+private:
+    struct Nearest {
+        int part;
+        float value;
+        Eigen::Vector3d local; // the query point in the part's frame
+    };
+
+    Nearest nearest(glm::vec3 p) const;
+
+    std::vector<Part> m_parts;
+    std::vector<SE3> m_inversePoses;
+    std::vector<Eigen::Vector3d> m_centers; // in the union's frame
 };
 
 } // namespace dabfc
